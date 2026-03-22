@@ -131,26 +131,31 @@ class MixamoAnimationLoader(FBXLoader):
 
     def load_animation(self, file_path: str) -> Dict[str, Any]:
         """
-        Loads animation data from a Mixamo FBX file.
+        Loads animation data from a model file (FBX or GLTF/GLB).
 
         Args:
-            file_path: The path to the Mixamo FBX file.
+            file_path: The path to the animation file.
 
         Returns:
             Dict[str, Any]: A dictionary containing animation data.
 
         Raises:
             FileNotFoundError: If the file does not exist.
-            DependencyError: If required dependencies are missing.
+            DependencyError: If required dependencies for FBX are missing.
             ValueError: If the file format is not supported or loading fails.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Animation file not found: {file_path}")
 
-        self._check_dependencies()
-
+        ext = os.path.splitext(file_path)[1].lower()
+        
         try:
-            scene = trimesh.load(file_path, file_type='fbx')
+            if ext == '.fbx':
+                self._check_dependencies()
+                scene = trimesh.load(file_path, file_type='fbx')
+            else:
+                # Native support for GLTF/GLB
+                scene = trimesh.load(file_path)
             
             # trimesh stores animations in scene.graph.animations or similar depending on version/backend
             animations = getattr(scene, 'animations', [])
@@ -161,4 +166,9 @@ class MixamoAnimationLoader(FBXLoader):
                 "file_path": file_path
             }
         except Exception as e:
-            raise ValueError(f"Failed to load Mixamo animation: {str(e)}")
+            if ext == '.fbx' and ("FBX-DOM unsupported" in str(e) or "old format version" in str(e)):
+                raise ValueError(
+                    f"Failed to load FBX animation: The file version is too new for the installed assimp library. "
+                    "Recommendation: Convert your FBX to GLTF/GLB using Blender."
+                )
+            raise ValueError(f"Failed to load animation: {str(e)}")
