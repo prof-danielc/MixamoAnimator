@@ -1,0 +1,7 @@
+PySide6
+pyrender
+trimesh
+numpy
+pytest
+pytest-cov
+pyassimp>=5.2.5
