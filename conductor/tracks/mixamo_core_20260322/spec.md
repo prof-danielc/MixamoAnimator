@@ -17,7 +17,8 @@ Implement a Python-based tool that maps Mixamo motion animations to custom FBX s
 4. **Desktop GUI (PySide6):**
    - Animation list display.
    - Playback controls (Play, Pause, Reset).
-   - Parameter-driven initialization (`model_name`, `animation_name`).
+   - Parameter-driven initialization (`--model_name`, `--animation_name`, `--animations_dir`).
+
 
 ## Requirements
 - **Python 3.10+**

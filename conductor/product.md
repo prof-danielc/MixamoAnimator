@@ -15,7 +15,7 @@ A desktop-based automation tool for hobbyist artists to effortlessly map Mixamo 
 ## Core Features (MVP)
 - **Animation Mapping:** Automated transfer of Mixamo motion data to user-provided FBX skeletal models.
 - **Real-time Playback GUI:** A standalone PyQt/PySide-based desktop window for loading models, listing animations, and interactive playback.
-- **Parametric Interface:** Simple command-line initialization with `model_name` and `animation_name` for rapid processing.
+- **Parametric Interface:** Simple command-line initialization with `--model_name` and `--animation_name` (semantic name, e.g., 'walk'). Supports a configurable `--animations_dir` for locating animation assets.
 
 ## Success Criteria
 - Successful loading of a skinned FBX model.
