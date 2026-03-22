@@ -50,35 +50,48 @@ class FBXLoader:
 
     def load_model(self, file_path: str) -> trimesh.Scene:
         """
-        Loads an FBX model from the specified file path.
+        Loads a 3D model from the specified file path.
+        Supports FBX (requires assimp) and GLTF/GLB (native support).
 
         Args:
-            file_path: The path to the FBX file.
+            file_path: The path to the model file.
 
         Returns:
             trimesh.Scene: The loaded scene containing the model.
 
         Raises:
             FileNotFoundError: If the file does not exist.
-            DependencyError: If required dependencies are missing.
+            DependencyError: If required dependencies for FBX are missing.
             ValueError: If the file format is not supported or loading fails.
         """
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"FBX file not found: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path}")
 
-        self._check_dependencies()
-
-        try:
-            # trimesh.load uses assimp for FBX if available.
-            scene = trimesh.load(file_path, file_type='fbx')
+        ext = os.path.splitext(file_path)[1].lower()
+        
+        if ext == '.fbx':
+            self._check_dependencies()
+            try:
+                scene = trimesh.load(file_path, file_type='fbx')
+            except Exception as e:
+                if "FBX-DOM unsupported" in str(e) or "old format version" in str(e):
+                    raise ValueError(
+                        f"Failed to load FBX model: The file version is too new for the installed assimp library. "
+                        "Assimp only supports FBX 2011, 2012, and 2013. "
+                        "Recommendation: Convert your FBX to GLTF/GLB or FBX 2013 using Blender or an online converter."
+                    )
+                raise ValueError(f"Failed to load FBX model: {str(e)}")
+        else:
+            # Native support for GLTF/GLB and others
+            try:
+                scene = trimesh.load(file_path)
+            except Exception as e:
+                raise ValueError(f"Failed to load model: {str(e)}")
             
-            if isinstance(scene, trimesh.Trimesh):
-                # Wrap single mesh in a scene for consistency
-                scene = trimesh.Scene(scene)
-                
-            return scene
-        except Exception as e:
-            raise ValueError(f"Failed to load FBX model: {str(e)}")
+        if isinstance(scene, trimesh.Trimesh):
+            scene = trimesh.Scene(scene)
+            
+        return scene
 
     def process_mesh_data(self, scene: trimesh.Scene) -> Tuple[np.ndarray, np.ndarray]:
         """

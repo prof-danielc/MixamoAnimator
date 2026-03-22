@@ -46,8 +46,8 @@ def parse_args():
     Returns:
         argparse.Namespace: The parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="MixamoAnimator: Map Mixamo animations to FBX models.")
-    parser.add_argument("--model_name", required=True, help="The name or path of the FBX model file.")
+    parser = argparse.ArgumentParser(description="MixamoAnimator: Map Mixamo animations to 3D models.")
+    parser.add_argument("--model_name", required=True, help="The name or path of the 3D model file (.fbx, .glb, .gltf).")
     parser.add_argument("--animation_name", required=True, help="The semantic name of the animation (e.g., 'walk', 'run').")
     parser.add_argument("--animations_dir", default="./animations", help="The directory where Mixamo animations are stored.")
     return parser.parse_args()
