@@ -84,15 +84,21 @@ def main():
         ui.print_header(f"Downloading {len(selected_anims)} Animations")
         
         with ui.create_progress_bar() as progress:
-            task = progress.add_task("[cyan]Downloading...", total=len(selected_anims))
+            task = progress.add_task("[cyan]Starting downloads...", total=len(selected_anims))
             
-            # Since download_animations handles the loop internally in the bot class,
-            # we'll tweak it to support progress reporting if needed, 
-            # or just call it and update at the end.
-            # For now, let's call it and update progress.
-            
-            results = bot.download_animations(selected_anims, args.output_dir)
-            progress.update(task, completed=len(selected_anims))
+            def progress_callback(current, total, name, eta_seconds):
+                # Format ETA: MM:SS
+                eta_str = "Calculating..."
+                if eta_seconds > 0:
+                    minutes = eta_seconds // 60
+                    seconds = eta_seconds % 60
+                    eta_str = f"{minutes:02d}:{seconds:02d}"
+                
+                desc = f"[cyan]Download {current}/{total}: [bold]{name}[/bold] (ETA: {eta_str})"
+                progress.update(task, description=desc, completed=current - 1)
+
+            results = bot.download_animations(selected_anims, args.output_dir, progress_callback=progress_callback)
+            progress.update(task, description="[green]All downloads complete!", completed=len(selected_anims))
 
         # 9. Report
         success_count = sum(1 for r in results.values() if r)

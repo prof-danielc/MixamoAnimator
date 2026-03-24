@@ -1,7 +1,8 @@
 import os
 import logging
+import time
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Callable
 import re
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Error as PlaywrightError
 
@@ -236,46 +237,95 @@ class MixamoBot:
             logger.error(f"Catalog failed: {e}")
             return []
 
-    def download_animations(self, selected_anims: List[Dict[str, str]], output_dir: str) -> Dict[str, bool]:
+    def download_animations(self, selected_anims: List[Dict[str, str]], output_dir: str, progress_callback: Optional[Callable] = None) -> Dict[str, bool]:
+        """
+        Batch downloads animations.
+        progress_callback: function(current_index, total_count, current_anim_name, eta_seconds)
+        """
         if not self.page: self.start()
         os.makedirs(output_dir, exist_ok=True)
         results = {}
-        for anim in selected_anims:
+        total_count = len(selected_anims)
+        download_times = []
+        
+        for i, anim in enumerate(selected_anims):
+            start_time = time.time()
             aid = anim['id']
             aname = anim['name']
+            
+            # Calculate ETA
+            eta_seconds = 0
+            if download_times:
+                avg_time = sum(download_times) / len(download_times)
+                eta_seconds = int(avg_time * (total_count - i))
+            
+            # Report progress
+            if progress_callback:
+                progress_callback(i + 1, total_count, aname, eta_seconds)
+            
             try:
-                logger.info(f"Downloading: {aname} ({aid})")
+                logger.info(f"Downloading {i+1}/{total_count}: {aname} ({aid})")
                 self.page.goto(f"https://www.mixamo.com/#/?page=1&query=&type=Motion%2CCharacter&product_id={aid}")
                 self.page.wait_for_load_state("networkidle", timeout=30000)
+                
+                # Download button
                 dl_btn = self.page.get_by_text("Download", exact=False).first
                 if not dl_btn.is_visible():
                     for f in self.page.frames:
                         loc = f.get_by_text("Download", exact=False).first
                         if loc.is_visible(): dl_btn = loc; break
-                if not (dl_btn and dl_btn.is_visible()): results[aid] = False; continue
+                if not (dl_btn and dl_btn.is_visible()): 
+                    logger.error(f"Download button not found for {aname}")
+                    results[aid] = False; continue
                 
                 dl_btn.click()
+                
+                # Modal Download
                 m_btn = None
                 for _ in range(10):
                     for f in self.page.frames:
-                        l = f.locator('.modal-footer').get_by_text("Download", exact=False).first
-                        if l.count() > 0 and l.is_visible(): m_btn = l; break
+                        try:
+                            loc = f.locator('.modal-footer').get_by_text("Download", exact=False).first
+                            if loc.count() > 0 and loc.is_visible(): m_btn = loc; break
+                        except: continue
                     if m_btn: break
                     self.page.wait_for_timeout(2000)
-                if not m_btn: results[aid] = False; continue
-                with self.page.expect_download(timeout=60000) as d: m_btn.click()
                 
-                download = d.value
+                if not m_btn: 
+                    logger.error(f"Modal download button not found for {aname}")
+                    results[aid] = False; continue
+                
+                with self.page.expect_download(timeout=60000) as d_info:
+                    m_btn.click()
+                
+                download = d_info.value
                 orig_filename = download.suggested_filename
                 base, ext = os.path.splitext(orig_filename)
-                safe_name = "".join([c for c in aname if c.isalnum() or c in (' ', '_', '-')]).strip().replace(' ', '_')
-                new_filename = f"{base}_{safe_name}{ext}"
                 
+                # Sanitize name
+                safe_name = "".join([c for c in aname if c.isalnum() or c in (' ', '_', '-')]).strip().replace(' ', '_')
+                
+                # Construct unique filename (Collision Fix)
+                new_filename = f"{base}_{safe_name}{ext}"
                 path = os.path.join(output_dir, new_filename)
+                
+                counter = 1
+                while os.path.exists(path):
+                    new_filename = f"{base}_{safe_name}_{counter}{ext}"
+                    path = os.path.join(output_dir, new_filename)
+                    counter += 1
+                
                 download.save_as(path)
                 logger.info(f"Saved: {path}")
                 results[aid] = True
-            except: results[aid] = False
+                
+                # Record time taken for ETA
+                download_times.append(time.time() - start_time)
+                
+            except Exception as e:
+                logger.error(f"Failed {aname}: {e}")
+                results[aid] = False
+                
         return results
 
     def __enter__(self): self.start(); return self
