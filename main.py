@@ -1,101 +1,113 @@
-"""Main entry point for MixamoAnimator."""
-
+#!/usr/bin/env python3
 import argparse
 import sys
 import os
-import glob
-from PySide6.QtWidgets import QApplication
-from ui.main_window import MainWindow
+import logging
+from pathlib import Path
+from config.settings import SettingsManager
+from bot.mixamo_bot import MixamoBot
+from cli.ui import UI
 
-
-def resolve_animation_path(animations_dir, animation_name):
-    """Resolves a semantic animation name to a file path.
-
-    Args:
-        animations_dir (str): The directory to search for animations.
-        animation_name (str): The semantic name of the animation (e.g., 'walk').
-
-    Returns:
-        str: The full path to the animation file if found, None otherwise.
-    """
-    if not os.path.exists(animations_dir):
-        return None
-
-    # Search for common 3D formats
-    extensions = ['*.fbx', '*.obj', '*.glb', '*.gltf']
-    for ext in extensions:
-        # Exact match (case-insensitive)
-        pattern = os.path.join(animations_dir, f"{animation_name}{ext[1:]}")
-        matches = glob.glob(pattern)
-        if matches:
-            return matches[0]
-        
-        # Case-insensitive search using glob if exact match fails
-        all_files = glob.glob(os.path.join(animations_dir, ext))
-        for file in all_files:
-            base = os.path.splitext(os.path.basename(file))[0].lower()
-            if base == animation_name.lower():
-                return file
-                
-    return None
-
-
-def parse_args():
-    """Parses command-line arguments for MixamoAnimator.
-
-    Returns:
-        argparse.Namespace: The parsed arguments.
-    """
-    parser = argparse.ArgumentParser(description="MixamoAnimator: Map Mixamo animations to 3D models.")
-    parser.add_argument("--model_name", required=True, help="The name or path of the 3D model file (.fbx, .glb, .gltf).")
-    parser.add_argument("--animation_name", required=True, help="The semantic name of the animation (e.g., 'walk', 'run').")
-    parser.add_argument("--animations_dir", default="./animations", help="The directory where Mixamo animations are stored.")
-    return parser.parse_args()
-
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def main():
-    """Main function for MixamoAnimator."""
-    args = parse_args()
+    """
+    Main entry point for the MixamoAnimator bot.
+    Coordinates settings, the Playwright bot, and the terminal UI.
+    """
+    parser = argparse.ArgumentParser(description="Mixamo Animator Bot")
+    parser.add_argument("--model_path", type=str, help="Path to the 3D model file (fbx, obj, zip)")
+    parser.add_argument("--headless", action="store_true", default=False, help="Run browser in headless mode")
+    parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run browser in headful mode")
+    parser.add_argument("--output_dir", type=str, default="downloads", help="Directory to save animations")
+    parser.add_argument("--limit", type=int, default=20, help="Maximum number of animations to fetch from catalog (Mixamo has ~2500)")
     
-    # Check if model exists
-    model_path = args.model_name
+    args = parser.parse_args()
+    ui = UI()
+    settings = SettingsManager()
+
+    # 1. Ensure credentials exist
+    if not settings.email or not settings.password:
+        ui.print_header("Mixamo Credentials")
+        ui.print_message("Credentials not found in config. Please enter them below.")
+        email, password = ui.get_credentials()
+        settings.email = email
+        settings.password = password
+        settings.save()
+        ui.print_success("Credentials saved to config.json")
+
+    # 2. Resolve model path
+    model_path = args.model_path
+    if not model_path:
+        model_path = ui.console.input("[bold yellow][?][/bold yellow] Enter path to your 3D model: ").strip()
+    
+    model_path = os.path.abspath(model_path)
     if not os.path.exists(model_path):
-        # Try looking in project root if it's just a name
-        if os.path.exists(os.path.join(".", args.model_name)):
-            model_path = os.path.join(".", args.model_name)
-        else:
-            print(f"Error: Model file not found: {args.model_name}")
-            sys.exit(1)
-
-    # Resolve animation name to path
-    animation_path = resolve_animation_path(args.animations_dir, args.animation_name)
-    if not animation_path:
-        # Fallback: check if animation_name is actually a path that exists
-        if os.path.exists(args.animation_name):
-            animation_path = args.animation_name
-        else:
-            print(f"Error: Could not resolve animation '{args.animation_name}' in '{args.animations_dir}'.")
-            if os.path.exists(args.animations_dir):
-                available = [os.path.splitext(f)[0] for f in os.listdir(args.animations_dir) if f.lower().endswith('.fbx')]
-                if available:
-                    print(f"Available animations: {', '.join(available)}")
-            sys.exit(1)
-
-    print(f"Loading model: {model_path}")
-    print(f"Loading animation: {animation_path}")
-
-    app = QApplication(sys.argv)
-    
-    try:
-        window = MainWindow(model_path, animation_path)
-        window.show()
-        sys.exit(app.exec())
-    except Exception as e:
-        print(f"An error occurred during application startup: {e}")
-        import traceback
-        traceback.print_exc()
+        ui.print_error(f"Model file not found: {model_path}")
         sys.exit(1)
 
+    # 3. Initialize Bot
+    ui.print_header("Initializing Mixamo Bot")
+    bot = MixamoBot(headless=args.headless)
+    
+    try:
+        # 4. Login
+        ui.print_message("Logging in to Mixamo...")
+        if not bot.login(settings.email, settings.password):
+            ui.print_error("Login failed. Please check your credentials and internet connection.")
+            sys.exit(1)
+        ui.print_success("Logged in successfully.")
+
+        # 5. Upload Character
+        ui.print_message(f"Uploading character: {os.path.basename(model_path)}...")
+        if not bot.upload_character(model_path):
+            ui.print_error("Character upload failed.")
+            sys.exit(1)
+        ui.print_success("Character uploaded and rigged.")
+
+        # 6. Fetch Catalog
+        ui.print_message("Fetching animation catalog...")
+        catalog = bot.fetch_animation_catalog(limit=args.limit)
+        if not catalog:
+            ui.print_error("Failed to fetch animation catalog.")
+            sys.exit(1)
+        
+        # 7. Selection
+        selected_anims = ui.select_animations(catalog)
+        if not selected_anims:
+            ui.print_message("No animations selected. Exiting.")
+            return
+
+        # 8. Batch Download
+        ui.print_header(f"Downloading {len(selected_anims)} Animations")
+        
+        with ui.create_progress_bar() as progress:
+            task = progress.add_task("[cyan]Downloading...", total=len(selected_anims))
+            
+            # Since download_animations handles the loop internally in the bot class,
+            # we'll tweak it to support progress reporting if needed, 
+            # or just call it and update at the end.
+            # For now, let's call it and update progress.
+            
+            results = bot.download_animations(selected_anims, args.output_dir)
+            progress.update(task, completed=len(selected_anims))
+
+        # 9. Report
+        success_count = sum(1 for r in results.values() if r)
+        ui.print_header("Execution Summary")
+        ui.print_message(f"Total Selected: {len(selected_anims)}")
+        ui.print_message(f"Successfully Downloaded: {success_count}")
+        ui.print_message(f"Failed: {len(selected_anims) - success_count}")
+        ui.print_success(f"Animations saved to: {os.path.abspath(args.output_dir)}")
+
+    except Exception as e:
+        ui.print_error(f"An unexpected error occurred: {str(e)}")
+    finally:
+        ui.print_message("Closing browser...")
+        bot.stop()
+        ui.print_message("Done.")
 
 if __name__ == "__main__":
     main()
