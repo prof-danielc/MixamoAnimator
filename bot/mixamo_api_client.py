@@ -53,7 +53,7 @@ class MixamoAPIClient:
             files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
             result = self.request("POST", "characters", files=files)
             
-        logger.debug(f"Upload API response: {result}")
+        logger.info(f"Upload API response: {result}")
         # Standardize ID retrieval
         char_id = result.get("character_id") or result.get("id")
         if not char_id and "results" in result:
