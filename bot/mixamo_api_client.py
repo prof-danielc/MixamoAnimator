@@ -171,6 +171,8 @@ class MixamoAPIClient:
                 
                 completed += 1
                 if progress_callback:
-                    progress_callback(completed, total, anim["name"])
+                    # In threaded mode, we don't have a reliable per-task ETA 
+                    # without complex tracking. Pass 0 for now.
+                    progress_callback(completed, total, anim["name"], 0)
                     
         return results

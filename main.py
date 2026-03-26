@@ -51,6 +51,7 @@ def main():
     # 3. Initialize Bot
     ui.print_header("Initializing Mixamo Bot")
     bot = MixamoBot(headless=args.headless)
+    ui.display_api_status(bot.api_client is not None)
     
     try:
         # 4. Login

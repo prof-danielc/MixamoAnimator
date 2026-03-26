@@ -1,6 +1,6 @@
 import inquirer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 from typing import List, Dict, Optional
 
 
@@ -68,9 +68,15 @@ class UI:
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
+            TimeRemainingColumn(),
             console=self.console,
             transient=True
         )
+
+    def display_api_status(self, active: bool):
+        """Displays whether the API client is active/authenticated."""
+        status = "[bold green]Active[/bold green]" if active else "[bold yellow]Inactive (Fallback to Playwright)[/bold yellow]"
+        self.console.print(f"Mixamo API Status: {status}")
 
     def print_message(self, message: str, style: str = "white"):
         """Prints a message with the specified rich style."""

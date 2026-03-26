@@ -211,7 +211,10 @@ def test_download_animations_threaded(tmp_path, monkeypatch):
         mock_dl.headers = {"content-length": "8"}
         mock_get.return_value = mock_dl
         
-        results = client.download_animations("char_123", anims, output_dir)
+        # Test with callback
+        mock_callback = MagicMock()
+        results = client.download_animations("char_123", anims, output_dir, progress_callback=mock_callback)
         
         assert results["anim_1"] is True
         assert os.path.exists(os.path.join(output_dir, "Walk_char_123.fbx"))
+        mock_callback.assert_called_with(1, 1, "Walk", 0)
