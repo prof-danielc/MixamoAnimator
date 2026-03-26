@@ -85,3 +85,42 @@ def test_upload_character(tmp_path, monkeypatch):
         method, url = mock_req.call_args[0]
         assert method == "POST"
         assert "characters" in url
+
+import json
+
+def test_fetch_animation_catalog_caching(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    catalog_file = tmp_path / "animations_catalog.json"
+    
+    mock_data = {
+        "results": [
+            {"id": "anim_1", "name": "Walk"},
+            {"id": "anim_2", "name": "Run"}
+        ]
+    }
+    
+    with patch("requests.request") as mock_req:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_data
+        mock_req.return_value = mock_response
+        
+        # 1. Fetch from API
+        catalog = client.fetch_animation_catalog(limit=2)
+        assert len(catalog) == 2
+        assert catalog[0]["name"] == "Walk"
+        assert mock_req.call_count == 1
+        
+        # Verify file created
+        assert catalog_file.exists()
+        with open(catalog_file, "r") as f:
+            cached_data = json.load(f)
+            assert len(cached_data) == 2
+            
+        # 2. Fetch again, should use cache (mock_req should NOT be called again)
+        catalog2 = client.fetch_animation_catalog(limit=2)
+        assert len(catalog2) == 2
+        assert mock_req.call_count == 1 # Still 1

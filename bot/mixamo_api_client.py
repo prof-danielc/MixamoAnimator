@@ -1,17 +1,19 @@
 import os
 import requests
+import json
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 class MixamoAPIClient:
     BASE_URL = "https://www.mixamo.com/api/v1"
 
-    def __init__(self, token_file="mixamo_token.txt"):
+    def __init__(self, token_file="mixamo_token.txt", catalog_file="animations_catalog.json"):
         if not os.path.exists(token_file):
             raise FileNotFoundError(f"Bearer token not found at {token_file}")
         
         with open(token_file, "r") as f:
             self.token = f.read().strip()
             
+        self.catalog_file = catalog_file
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "X-Api-Key": "mixamo2",
@@ -44,8 +46,35 @@ class MixamoAPIClient:
             
         with open(file_path, "rb") as f:
             files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
-            # The API might require specific multipart structure. 
-            # Based on standard Mixamo API, it's a POST to /characters
             result = self.request("POST", "characters", files=files)
             
         return result.get("character_id") or result.get("id")
+
+    def fetch_animation_catalog(self, limit=100, force_refresh=False):
+        """
+        Fetches the animation catalog from Mixamo API and caches it locally.
+        Returns a list of animation objects.
+        """
+        if not force_refresh and os.path.exists(self.catalog_file):
+            with open(self.catalog_file, "r") as f:
+                return json.load(f)
+
+        animations = []
+        page = 1
+        while len(animations) < limit:
+            url = f"products?page={page}&limit=96&order=&type=Motion%2CMotionPack&query="
+            data = self.request("GET", url)
+            results = data.get("results", [])
+            if not results:
+                break
+            
+            animations.extend(results)
+            if len(results) < 96:
+                break
+            page += 1
+
+        animations = animations[:limit]
+        with open(self.catalog_file, "w") as f:
+            json.dump(animations, f)
+
+        return animations
