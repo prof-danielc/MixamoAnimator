@@ -14,6 +14,11 @@
 - **Blender Python API (bpy):** Optional dependency for advanced 3D processing and asset conversion.
 - **Trimesh:** A versatile library for loading, processing, and analyzing 3D meshes and animations.
 
+## Networking & Automation
+- **Requests:** For direct interaction with the Mixamo API.
+- **Tenacity:** For robust API request retries and error handling.
+- **Playwright (Fallback):** For browser-based automation and session management as a robust fallback to the direct API.
+
 ## Development & Build Tools
 - **Pip/Conda:** For dependency management.
 - **Git:** For version control.
