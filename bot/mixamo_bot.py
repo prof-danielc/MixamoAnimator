@@ -180,12 +180,14 @@ class MixamoBot:
                 if self.character_id:
                     logger.info(f"API upload successful. Character ID: {self.character_id}")
                     return True
+                else:
+                    logger.warning("API upload did not return a character ID. Falling back to Playwright.")
             except Exception as e:
                 logger.error(f"API upload failed: {e}. Falling back to Playwright.")
 
+        logger.info(f"Uploading via Playwright: {file_path}")
         if not self.page: self.start()
         try:
-            logger.info(f"Uploading via Playwright: {file_path}")
             self.page.goto("https://www.mixamo.com/#/?page=1&query=&type=Character")
             self.page.wait_for_load_state("networkidle", timeout=30000)
             self.page.wait_for_timeout(5000)

@@ -2,8 +2,11 @@ import os
 import requests
 import json
 import time
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+logger = logging.getLogger(__name__)
 
 class MixamoAPIClient:
     BASE_URL = "https://www.mixamo.com/api/v1"
@@ -50,7 +53,17 @@ class MixamoAPIClient:
             files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
             result = self.request("POST", "characters", files=files)
             
-        return result.get("character_id") or result.get("id")
+        logger.debug(f"Upload API response: {result}")
+        # Standardize ID retrieval
+        char_id = result.get("character_id") or result.get("id")
+        if not char_id and "results" in result:
+            # Some endpoints wrap in results
+            if isinstance(result["results"], list) and len(result["results"]) > 0:
+                char_id = result["results"][0].get("id")
+            elif isinstance(result["results"], dict):
+                char_id = result["results"].get("id")
+                
+        return char_id
 
     def fetch_animation_catalog(self, limit=100, force_refresh=False):
         """
