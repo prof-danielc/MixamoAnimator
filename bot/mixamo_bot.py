@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Callable
 import re
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Error as PlaywrightError
+from bot.mixamo_api_client import MixamoAPIClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -12,12 +13,13 @@ logger = logging.getLogger(__name__)
 
 class MixamoBot:
     """
-    Automates interactions with the Mixamo website using Playwright.
-    Handles authentication, character upload, and animation catalog management for the 2026 interface.
+    Automates interactions with the Mixamo website.
+    Now prioritizes direct API calls via MixamoAPIClient with Playwright as a fallback.
     """
 
     LOGIN_URL = "https://www.mixamo.com/"
     SESSION_FILE = "session.json"
+    TOKEN_FILE = "mixamo_token.txt"
 
     def __init__(self, headless: bool = False):
         self.headless = headless
@@ -25,7 +27,18 @@ class MixamoBot:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-        print(f"DEBUG: MixamoBot initialized (headless={headless})")
+        
+        self.character_id: Optional[str] = None
+        self.api_client: Optional[MixamoAPIClient] = None
+        
+        if os.path.exists(self.TOKEN_FILE):
+            try:
+                self.api_client = MixamoAPIClient(token_file=self.TOKEN_FILE)
+                logger.info("MixamoAPIClient initialized.")
+            except Exception as e:
+                logger.error(f"Failed to initialize API client: {e}")
+        
+        print(f"DEBUG: MixamoBot initialized (headless={headless}, API={self.api_client is not None})")
 
     def start(self) -> None:
         self._playwright = sync_playwright().start()
@@ -43,7 +56,7 @@ class MixamoBot:
         if self._playwright: self._playwright.stop()
 
     def login(self, email: str, password: str) -> bool:
-        print("DEBUG: RUNNING LATEST MIXAMO BOT VERSION 2026-03-23-FINAL-V31")
+        print("DEBUG: RUNNING LATEST MIXAMO BOT VERSION 2026-03-26-API-PIVOT")
         if not self.page: self.start()
 
         def is_on_dashboard():
@@ -115,9 +128,22 @@ class MixamoBot:
         except: return False
 
     def upload_character(self, file_path: str) -> bool:
+        """
+        Uploads character. Prefers API, falls back to Playwright.
+        """
+        if self.api_client:
+            try:
+                logger.info(f"Uploading character via API: {file_path}")
+                self.character_id = self.api_client.upload_character(file_path)
+                if self.character_id:
+                    logger.info(f"API upload successful. Character ID: {self.character_id}")
+                    return True
+            except Exception as e:
+                logger.error(f"API upload failed: {e}. Falling back to Playwright.")
+
         if not self.page: self.start()
         try:
-            logger.info(f"Uploading: {file_path}")
+            logger.info(f"Uploading via Playwright: {file_path}")
             self.page.goto("https://www.mixamo.com/#/?page=1&query=&type=Character")
             self.page.wait_for_load_state("networkidle", timeout=30000)
             self.page.wait_for_timeout(5000)
@@ -165,36 +191,34 @@ class MixamoBot:
 
     def fetch_animation_catalog(self, limit: int = 50) -> List[Dict]:
         """
-        Scrapes the animation catalog by iterating through pages.
-        Each page contains ~48 animations.
+        Fetches animation catalog. Prefers API, falls back to Playwright.
         """
+        if self.api_client:
+            try:
+                logger.info("Fetching animation catalog via API...")
+                return self.api_client.fetch_animation_catalog(limit=limit)
+            except Exception as e:
+                logger.error(f"API catalog fetch failed: {e}. Falling back to Playwright.")
+
         if not self.page: self.start()
         try:
             animations = []
             page_num = 1
-            
-            logger.info(f"Fetching up to {limit} animations via pagination...")
-            
+            logger.info(f"Fetching up to {limit} animations via pagination (Playwright)...")
             while len(animations) < limit:
                 url = f"https://www.mixamo.com/#/?page={page_num}&type=Motion"
-                logger.info(f"Navigating to page {page_num}: {url}")
-                
                 self.page.goto(url)
                 self.page.wait_for_load_state("networkidle", timeout=30000)
-                self.page.wait_for_timeout(5000) # Let SPA settle
-                
+                self.page.wait_for_timeout(5000) 
                 selectors = ['.product', '.animation-card', '[data-product-id]']
                 found_on_page = []
-                
                 for f in self.page.frames:
                     for sel in selectors:
                         try:
                             cards = f.locator(sel).all()
                             for card in cards:
-                                # Filter motions only
                                 cl = card.get_attribute('class') or ""
                                 if 'character' in cl.lower() and 'motion' not in cl.lower(): continue
-                                
                                 pid = card.get_attribute('data-product-id')
                                 if not pid:
                                     img = card.locator('img').first
@@ -202,7 +226,6 @@ class MixamoBot:
                                         src = img.get_attribute('src')
                                         m = re.search(r'motions/(\d+)/', src)
                                         if m: pid = m.group(1)
-                                
                                 if pid and not any(a['id'] == pid for a in animations):
                                     name = "Unknown"
                                     for ns in ['p', 'h3', 'b']:
@@ -210,28 +233,16 @@ class MixamoBot:
                                         if el.count() > 0:
                                             t = el.inner_text().strip()
                                             if t: name = t; break
-                                    
                                     animations.append({"id": pid, "name": name})
                                     found_on_page.append(pid)
-                                    
-                                    if len(animations) >= limit:
-                                        break
+                                    if len(animations) >= limit: break
                                 if len(animations) >= limit: break
                             if len(animations) >= limit: break
                         except: continue
                     if len(animations) >= limit: break
-                
-                logger.info(f"Page {page_num} processed. Total found: {len(animations)}/{limit}")
-                
-                if not found_on_page:
-                    logger.info("No new animations found on this page. Reached end of catalog.")
-                    break
-                
+                if not found_on_page: break
                 page_num += 1
-                if page_num > 100: # Safety break
-                    break
-
-            logger.info(f"Successfully fetched {len(animations)} animations.")
+                if page_num > 100: break
             return animations
         except Exception as e:
             logger.error(f"Catalog failed: {e}")
@@ -239,48 +250,47 @@ class MixamoBot:
 
     def download_animations(self, selected_anims: List[Dict[str, str]], output_dir: str, progress_callback: Optional[Callable] = None) -> Dict[str, bool]:
         """
-        Batch downloads animations.
-        progress_callback: function(current_index, total_count, current_anim_name, eta_seconds)
+        Batch downloads animations. Prefers multi-threaded API, falls back to Playwright.
         """
+        if self.api_client and self.character_id:
+            try:
+                logger.info("Downloading animations via multi-threaded API...")
+                return self.api_client.download_animations(
+                    self.character_id, 
+                    selected_anims, 
+                    output_dir, 
+                    progress_callback=progress_callback
+                )
+            except Exception as e:
+                logger.error(f"API download failed: {e}. Falling back to Playwright.")
+
         if not self.page: self.start()
         os.makedirs(output_dir, exist_ok=True)
         results = {}
         total_count = len(selected_anims)
         download_times = []
-        
         for i, anim in enumerate(selected_anims):
             start_time = time.time()
             aid = anim['id']
             aname = anim['name']
-            
-            # Calculate ETA
             eta_seconds = 0
             if download_times:
                 avg_time = sum(download_times) / len(download_times)
                 eta_seconds = int(avg_time * (total_count - i))
-            
-            # Report progress
             if progress_callback:
                 progress_callback(i + 1, total_count, aname, eta_seconds)
-            
             try:
                 logger.info(f"Downloading {i+1}/{total_count}: {aname} ({aid})")
                 self.page.goto(f"https://www.mixamo.com/#/?page=1&query=&type=Motion%2CCharacter&product_id={aid}")
                 self.page.wait_for_load_state("networkidle", timeout=30000)
-                
-                # Download button
                 dl_btn = self.page.get_by_text("Download", exact=False).first
                 if not dl_btn.is_visible():
                     for f in self.page.frames:
                         loc = f.get_by_text("Download", exact=False).first
                         if loc.is_visible(): dl_btn = loc; break
                 if not (dl_btn and dl_btn.is_visible()): 
-                    logger.error(f"Download button not found for {aname}")
                     results[aid] = False; continue
-                
                 dl_btn.click()
-                
-                # Modal Download
                 m_btn = None
                 for _ in range(10):
                     for f in self.page.frames:
@@ -290,42 +300,27 @@ class MixamoBot:
                         except: continue
                     if m_btn: break
                     self.page.wait_for_timeout(2000)
-                
                 if not m_btn: 
-                    logger.error(f"Modal download button not found for {aname}")
                     results[aid] = False; continue
-                
                 with self.page.expect_download(timeout=60000) as d_info:
                     m_btn.click()
-                
                 download = d_info.value
                 orig_filename = download.suggested_filename
                 base, ext = os.path.splitext(orig_filename)
-                
-                # Sanitize name
                 safe_name = "".join([c for c in aname if c.isalnum() or c in (' ', '_', '-')]).strip().replace(' ', '_')
-                
-                # Construct unique filename (Collision Fix)
                 new_filename = f"{base}_{safe_name}{ext}"
                 path = os.path.join(output_dir, new_filename)
-                
                 counter = 1
                 while os.path.exists(path):
                     new_filename = f"{base}_{safe_name}_{counter}{ext}"
                     path = os.path.join(output_dir, new_filename)
                     counter += 1
-                
                 download.save_as(path)
-                logger.info(f"Saved: {path}")
                 results[aid] = True
-                
-                # Record time taken for ETA
                 download_times.append(time.time() - start_time)
-                
             except Exception as e:
                 logger.error(f"Failed {aname}: {e}")
                 results[aid] = False
-                
         return results
 
     def __enter__(self): self.start(); return self
