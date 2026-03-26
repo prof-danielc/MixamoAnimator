@@ -31,14 +31,42 @@ class MixamoBot:
         self.character_id: Optional[str] = None
         self.api_client: Optional[MixamoAPIClient] = None
         
+        self._refresh_api_client()
+        
+        print(f"DEBUG: MixamoBot initialized (headless={headless}, API={self.api_client is not None})")
+
+    def _refresh_api_client(self):
+        """Attempts to initialize or re-initialize the API client."""
         if os.path.exists(self.TOKEN_FILE):
             try:
                 self.api_client = MixamoAPIClient(token_file=self.TOKEN_FILE)
                 logger.info("MixamoAPIClient initialized.")
             except Exception as e:
                 logger.error(f"Failed to initialize API client: {e}")
-        
-        print(f"DEBUG: MixamoBot initialized (headless={headless}, API={self.api_client is not None})")
+
+    def _extract_and_save_token(self) -> bool:
+        """
+        Extracts the access token from the browser's local storage and saves it to a file.
+        """
+        if not self.page:
+            return False
+            
+        try:
+            # The token is usually stored in local storage under a key like 'access_token'
+            # or within a larger auth object.
+            token = self.page.evaluate("localStorage.getItem('access_token')")
+            if token:
+                with open(self.TOKEN_FILE, "w") as f:
+                    f.write(token)
+                logger.info(f"Successfully extracted and saved token to {self.TOKEN_FILE}")
+                self._refresh_api_client()
+                return True
+            else:
+                logger.warning("Access token not found in local storage.")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to extract token: {e}")
+            return False
 
     def start(self) -> None:
         self._playwright = sync_playwright().start()
@@ -56,7 +84,7 @@ class MixamoBot:
         if self._playwright: self._playwright.stop()
 
     def login(self, email: str, password: str) -> bool:
-        print("DEBUG: RUNNING LATEST MIXAMO BOT VERSION 2026-03-26-API-PIVOT")
+        print("DEBUG: RUNNING LATEST MIXAMO BOT VERSION 2026-03-26-API-AUTO-TOKEN")
         if not self.page: self.start()
 
         def is_on_dashboard():
@@ -68,6 +96,7 @@ class MixamoBot:
 
         if self.is_logged_in():
             logger.info("Automatically logged in.")
+            self._extract_and_save_token()
             return True
 
         try:
@@ -77,7 +106,9 @@ class MixamoBot:
                 login_btn.click()
                 self.page.wait_for_load_state("networkidle")
 
-            if is_on_dashboard(): return True
+            if is_on_dashboard(): 
+                self._extract_and_save_token()
+                return True
 
             # Email step
             email_selector = 'input#EmailPage-EmailField, input[name="username"]'
@@ -89,7 +120,9 @@ class MixamoBot:
             
             # Transition
             for _ in range(20):
-                if is_on_dashboard(): return True
+                if is_on_dashboard(): 
+                    self._extract_and_save_token()
+                    return True
                 if self.page.get_by_text("Personal Account", exact=False).is_visible() or self.page.locator('input[type="password"]').is_visible():
                     break
                 self.page.wait_for_timeout(2000)
@@ -101,9 +134,15 @@ class MixamoBot:
                 self.page.wait_for_timeout(3000)
 
             # Password step
-            if is_on_dashboard(): return True
+            if is_on_dashboard(): 
+                self._extract_and_save_token()
+                return True
             password_input = self.page.locator('input[type="password"]').filter(visible=True).first
-            if password_input.count() == 0: return is_on_dashboard()
+            if password_input.count() == 0: 
+                if is_on_dashboard():
+                    self._extract_and_save_token()
+                    return True
+                return False
 
             password_input.fill(password)
             password_input.press("Enter")
@@ -111,9 +150,12 @@ class MixamoBot:
             self.page.wait_for_url(lambda url: "mixamo.com/#/" in url and "login" not in url, timeout=60000)
             logger.info("Login successful.")
             self._context.storage_state(path=self.SESSION_FILE)
+            self._extract_and_save_token()
             return True
         except Exception as e:
-            if is_on_dashboard(): return True
+            if is_on_dashboard(): 
+                self._extract_and_save_token()
+                return True
             logger.error(f"Login failed: {e}"); return False
 
     def is_logged_in(self) -> bool:

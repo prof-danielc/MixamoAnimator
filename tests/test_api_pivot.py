@@ -43,3 +43,30 @@ def test_mixamo_bot_api_integration(tmp_path, monkeypatch, mock_playwright):
         results = bot.download_animations([{"id": "a1", "name": "Walk"}], "out")
         assert results == {"a1": True}
         mock_api.download_animations.assert_called_with("char_123", [{"id": "a1", "name": "Walk"}], "out", progress_callback=None)
+
+def test_mixamo_bot_token_extraction(tmp_path, monkeypatch, mock_playwright):
+    monkeypatch.chdir(tmp_path)
+    # No token file initially
+    
+    bot = MixamoBot()
+    assert bot.api_client is None
+    
+    # Mock successful login and token in local storage
+    # We need to mock the page.evaluate to return a token
+    mock_page = mock_playwright.chromium.launch.return_value.new_context.return_value.new_page.return_value
+    mock_page.url = "https://www.mixamo.com/#/"
+    mock_page.evaluate.return_value = "extracted_token"
+    
+    with patch("bot.mixamo_bot.MixamoAPIClient") as mock_api_class:
+        # Simulate login success
+        # In this test we just call a method that would be triggered after login
+        bot.page = mock_page
+        bot._context = MagicMock()
+        
+        # We need to manually call the part of login that saves the token for testing
+        bot._extract_and_save_token()
+        
+        assert os.path.exists("mixamo_token.txt")
+        assert open("mixamo_token.txt").read() == "extracted_token"
+        assert bot.api_client is not None
+        mock_api_class.assert_called_once_with(token_file="mixamo_token.txt")
