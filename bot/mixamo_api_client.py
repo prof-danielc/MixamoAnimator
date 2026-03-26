@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 class MixamoAPIClient:
@@ -80,6 +81,10 @@ class MixamoAPIClient:
 
         return animations
 
+    def get_product(self, anim_id, character_id):
+        url = f"products/{anim_id}?similar=0&character_id={character_id}"
+        return self.request("GET", url)
+
     def export_animation(self, character_id, gms_hash_array, product_name):
         """
         Triggers an animation export for a specific character.
@@ -111,3 +116,61 @@ class MixamoAPIClient:
                 raise Exception(f"Export failed: {data.get('message', 'Unknown error')}")
             
             time.sleep(interval)
+
+    def _download_file(self, url, output_path):
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(output_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    def _process_single_animation(self, character_id, anim, output_dir):
+        anim_id = anim["id"]
+        anim_name = anim["name"]
+        filename = f"{anim_name}_{character_id}.fbx"
+        output_path = os.path.join(output_dir, filename)
+        
+        if os.path.exists(output_path):
+            return True
+            
+        product_data = self.get_product(anim_id, character_id)
+        gms_hash = product_data["details"]["gms_hash"]
+        
+        # Format gms_hash params if they are lists (as in mixamo_harvester.py)
+        if isinstance(gms_hash.get("params"), list):
+             gms_hash["params"] = ",".join(str(param[1]) for param in gms_hash["params"])
+
+        self.export_animation(character_id, [gms_hash], anim_name)
+        download_url = self.monitor_export_progress(character_id)
+        self._download_file(download_url, output_path)
+        return True
+
+    def download_animations(self, character_id, animations, output_dir, max_workers=5, progress_callback=None):
+        """
+        Concurrent download of animations.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        results = {}
+        total = len(animations)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_anim = {
+                executor.submit(self._process_single_animation, character_id, anim, output_dir): anim 
+                for anim in animations
+            }
+            
+            completed = 0
+            for future in as_completed(future_to_anim):
+                anim = future_to_anim[future]
+                anim_id = anim["id"]
+                try:
+                    results[anim_id] = future.result()
+                except Exception as e:
+                    print(f"Error processing animation {anim['name']}: {e}")
+                    results[anim_id] = False
+                
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, total, anim["name"])
+                    
+        return results

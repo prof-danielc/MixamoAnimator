@@ -166,3 +166,52 @@ def test_monitor_export_progress(tmp_path, monkeypatch):
             download_url = client.monitor_export_progress("char_123")
             assert download_url == "http://download.url"
             assert mock_req.call_count == 2
+
+from concurrent.futures import ThreadPoolExecutor
+
+def test_download_animations_threaded(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    anims = [{"id": "anim_1", "name": "Walk"}]
+    output_dir = str(tmp_path / "output")
+    
+    # Mock sequence: 
+    # 1. get_product (products/anim_1) -> gms_hash
+    # 2. export_animation (animations/export) -> job_id
+    # 3. monitor_export_progress (characters/char_123/monitor) -> download_url
+    # 4. requests.get (download_url) -> fbx content
+    
+    with patch("requests.request") as mock_req, \
+         patch("requests.get") as mock_get, \
+         patch("time.sleep", return_value=None):
+        
+        # products/anim_1
+        mock_product = MagicMock()
+        mock_product.status_code = 200
+        mock_product.json.return_value = {"details": {"gms_hash": {"params": [[0, "val"]]}}}
+        
+        # animations/export
+        mock_export = MagicMock()
+        mock_export.status_code = 200
+        mock_export.json.return_value = {"job_id": "job_1"}
+        
+        # characters/char_123/monitor
+        mock_monitor = MagicMock()
+        mock_monitor.status_code = 200
+        mock_monitor.json.return_value = {"status": "completed", "job_result": "http://dl.url"}
+        
+        mock_req.side_effect = [mock_product, mock_export, mock_monitor]
+        
+        # fbx download
+        mock_dl = MagicMock()
+        mock_dl.status_code = 200
+        mock_dl.iter_content.return_value = [b"fbx_data"]
+        mock_dl.headers = {"content-length": "8"}
+        mock_get.return_value = mock_dl
+        
+        results = client.download_animations("char_123", anims, output_dir)
+        
+        assert results["anim_1"] is True
+        assert os.path.exists(os.path.join(output_dir, "Walk_char_123.fbx"))
