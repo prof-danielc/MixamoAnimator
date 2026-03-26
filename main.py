@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run browser in headful mode")
     parser.add_argument("--output_dir", type=str, default="downloads", help="Directory to save animations")
     parser.add_argument("--limit", type=int, default=20, help="Maximum number of animations to fetch from catalog (Mixamo has ~2500)")
+    parser.add_argument("--no-skin", action="store_true", default=False, help="Download animations without skin (useful for Blender)")
     
     args = parser.parse_args()
     ui = UI()
@@ -98,7 +99,12 @@ def main():
                 desc = f"[cyan]Download {current}/{total}: [bold]{name}[/bold] (ETA: {eta_str})"
                 progress.update(task, description=desc, completed=current - 1)
 
-            results = bot.download_animations(selected_anims, args.output_dir, progress_callback=progress_callback)
+            results = bot.download_animations(
+                selected_anims, 
+                args.output_dir, 
+                progress_callback=progress_callback,
+                include_skin=not args.no_skin
+            )
             progress.update(task, description="[green]All downloads complete!", completed=len(selected_anims))
 
         # 9. Report

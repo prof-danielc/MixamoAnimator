@@ -216,5 +216,23 @@ def test_download_animations_threaded(tmp_path, monkeypatch):
         results = client.download_animations("char_123", anims, output_dir, progress_callback=mock_callback)
         
         assert results["anim_1"] is True
-        assert os.path.exists(os.path.join(output_dir, "Walk_char_123.fbx"))
+        assert os.path.exists(os.path.join(output_dir, "Walk_char_123_with_skin.fbx"))
         mock_callback.assert_called_with(1, 1, "Walk", 0)
+
+def test_export_animation_no_skin(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    with patch("requests.request") as mock_req:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"job_id": "job_123"}
+        mock_req.return_value = mock_response
+        
+        gms_hash = {"params": "1,2,3"}
+        client.export_animation("char_123", [gms_hash], "Walk", include_skin=False)
+        
+        args, kwargs = mock_req.call_args
+        payload = kwargs["json"]
+        assert payload["preferences"]["skin"] == "false"

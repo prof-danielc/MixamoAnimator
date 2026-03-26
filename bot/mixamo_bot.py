@@ -292,7 +292,7 @@ class MixamoBot:
             logger.error(f"Catalog failed: {e}")
             return []
 
-    def download_animations(self, selected_anims: List[Dict[str, str]], output_dir: str, progress_callback: Optional[Callable] = None) -> Dict[str, bool]:
+    def download_animations(self, selected_anims: List[Dict[str, str]], output_dir: str, progress_callback: Optional[Callable] = None, include_skin: bool = True) -> Dict[str, bool]:
         """
         Batch downloads animations. Prefers multi-threaded API, falls back to Playwright.
         """
@@ -303,7 +303,8 @@ class MixamoBot:
                     self.character_id, 
                     selected_anims, 
                     output_dir, 
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    include_skin=include_skin
                 )
             except Exception as e:
                 logger.error(f"API download failed: {e}. Falling back to Playwright.")
@@ -327,6 +328,12 @@ class MixamoBot:
                 logger.info(f"Downloading {i+1}/{total_count}: {aname} ({aid})")
                 self.page.goto(f"https://www.mixamo.com/#/?page=1&query=&type=Motion%2CCharacter&product_id={aid}")
                 self.page.wait_for_load_state("networkidle", timeout=30000)
+                
+                # Note: Playwright fallback doesn't easily support no-skin without complex UI interactions
+                # For now we log a warning if no-skin is requested but we're in fallback mode.
+                if not include_skin:
+                    logger.warning("No-skin download is currently only supported via API. Falling back to default (with skin).")
+
                 dl_btn = self.page.get_by_text("Download", exact=False).first
                 if not dl_btn.is_visible():
                     for f in self.page.frames:

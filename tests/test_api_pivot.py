@@ -42,7 +42,7 @@ def test_mixamo_bot_api_integration(tmp_path, monkeypatch, mock_playwright):
         # Test download delegation
         results = bot.download_animations([{"id": "a1", "name": "Walk"}], "out")
         assert results == {"a1": True}
-        mock_api.download_animations.assert_called_with("char_123", [{"id": "a1", "name": "Walk"}], "out", progress_callback=None)
+        mock_api.download_animations.assert_called_with("char_123", [{"id": "a1", "name": "Walk"}], "out", progress_callback=None, include_skin=True)
 
 def test_mixamo_bot_token_extraction(tmp_path, monkeypatch, mock_playwright):
     monkeypatch.chdir(tmp_path)
