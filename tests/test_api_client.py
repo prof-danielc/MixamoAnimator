@@ -62,3 +62,26 @@ def test_request_with_retry_fail_then_success(tmp_path, monkeypatch):
         result = client.request("GET", "http://example.com")
         assert result == {"success": True}
         assert mock_req.call_count == 2
+
+def test_upload_character(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    # Mocking character upload flow
+    with patch("requests.request") as mock_req:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"character_id": "char_123"}
+        mock_req.return_value = mock_response
+        
+        # In reality, this will be a POST with files. We mock the response.
+        fbx_path = tmp_path / "model.fbx"
+        fbx_path.write_text("dummy fbx content")
+        
+        char_id = client.upload_character(str(fbx_path))
+        assert char_id == "char_123"
+        assert mock_req.called
+        method, url = mock_req.call_args[0]
+        assert method == "POST"
+        assert "characters" in url
