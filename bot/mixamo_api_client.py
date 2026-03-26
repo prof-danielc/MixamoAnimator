@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import time
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 class MixamoAPIClient:
@@ -78,3 +79,35 @@ class MixamoAPIClient:
             json.dump(animations, f)
 
         return animations
+
+    def export_animation(self, character_id, gms_hash_array, product_name):
+        """
+        Triggers an animation export for a specific character.
+        """
+        url = "animations/export"
+        payload = {
+            "character_id": character_id,
+            "gms_hash": gms_hash_array,
+            "preferences": {"format": "fbx7", "skin": "false", "fps": "30", "reducekf": "0"},
+            "product_name": product_name,
+            "type": "Motion"
+        }
+        result = self.request("POST", url, json=payload)
+        return result.get("job_id")
+
+    def monitor_export_progress(self, character_id, interval=5):
+        """
+        Polls the character monitor endpoint until the export is completed.
+        Returns the job_result (download URL).
+        """
+        url = f"characters/{character_id}/monitor"
+        while True:
+            data = self.request("GET", url)
+            status = data.get("status")
+            
+            if status == "completed":
+                return data.get("job_result")
+            elif status == "failed":
+                raise Exception(f"Export failed: {data.get('message', 'Unknown error')}")
+            
+            time.sleep(interval)

@@ -124,3 +124,45 @@ def test_fetch_animation_catalog_caching(tmp_path, monkeypatch):
         catalog2 = client.fetch_animation_catalog(limit=2)
         assert len(catalog2) == 2
         assert mock_req.call_count == 1 # Still 1
+
+def test_export_animation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    with patch("requests.request") as mock_req:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"job_id": "job_123"}
+        mock_req.return_value = mock_response
+        
+        gms_hash = {"params": "1,2,3"}
+        job_id = client.export_animation("char_123", [gms_hash], "Walk")
+        assert job_id == "job_123"
+        assert mock_req.called
+        method, url = mock_req.call_args[0]
+        assert method == "POST"
+        assert "animations/export" in url
+
+def test_monitor_export_progress(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    with patch("requests.request") as mock_req:
+        # First call: processing, Second call: completed
+        mock_processing = MagicMock()
+        mock_processing.status_code = 200
+        mock_processing.json.return_value = {"status": "processing"}
+        
+        mock_completed = MagicMock()
+        mock_completed.status_code = 200
+        mock_completed.json.return_value = {"status": "completed", "job_result": "http://download.url"}
+        
+        mock_req.side_effect = [mock_processing, mock_completed]
+        
+        # We need to mock time.sleep to avoid waiting during tests
+        with patch("time.sleep", return_value=None):
+            download_url = client.monitor_export_progress("char_123")
+            assert download_url == "http://download.url"
+            assert mock_req.call_count == 2
