@@ -15,5 +15,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Project pivot. Replace Playwright crawling with Mixamo API usage.**
+- [x] **Track: Project pivot. Replace Playwright crawling with Mixamo API usage.**
 *Link: [./tracks/mixamo_api_pivot_20260326/](./tracks/mixamo_api_pivot_20260326/)*
