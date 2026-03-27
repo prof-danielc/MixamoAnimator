@@ -3,6 +3,7 @@ import requests
 import json
 import time
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -23,6 +24,7 @@ class MixamoAPIClient:
             "Authorization": f"Bearer {self.token}",
             "X-Api-Key": "mixamo2",
         }
+        self._export_lock = threading.Lock()
 
     @retry(
         stop=stop_after_attempt(5),
@@ -55,7 +57,7 @@ class MixamoAPIClient:
             
         logger.info(f"Upload API response: {result}")
         
-        # Standardize ID retrieval - include 'uuid' as seen in logs
+        # Standardize ID retrieval
         char_id = result.get("character_id") or result.get("id") or result.get("uuid")
         
         if not char_id and "results" in result:
@@ -168,8 +170,12 @@ class MixamoAPIClient:
         if isinstance(gms_hash.get("params"), list):
              gms_hash["params"] = ",".join(str(param[1]) for param in gms_hash["params"])
 
-        self.export_animation(character_id, [gms_hash], anim_name, include_skin=include_skin)
-        download_url = self.monitor_export_progress(character_id)
+        # Use lock to ensure only one export job is triggered at a time per character
+        with self._export_lock:
+            logger.info(f"Triggering export for {anim_name}...")
+            self.export_animation(character_id, [gms_hash], anim_name, include_skin=include_skin)
+            download_url = self.monitor_export_progress(character_id)
+            
         self._download_file(download_url, output_path)
         return True
 
@@ -194,13 +200,11 @@ class MixamoAPIClient:
                 try:
                     results[anim_id] = future.result()
                 except Exception as e:
-                    print(f"Error processing animation {anim['name']}: {e}")
+                    logger.error(f"Error processing animation {anim['name']}: {e}")
                     results[anim_id] = False
                 
                 completed += 1
                 if progress_callback:
-                    # In threaded mode, we don't have a reliable per-task ETA 
-                    # without complex tracking. Pass 0 for now.
                     progress_callback(completed, total, anim["name"], 0)
                     
         return results
