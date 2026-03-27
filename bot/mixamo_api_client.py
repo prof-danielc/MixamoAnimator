@@ -41,7 +41,7 @@ class MixamoAPIClient:
             return None
         return response.json()
 
-    def upload_character(self, file_path):
+    def upload_character(self, file_path, wait_for_completion=True):
         """
         Uploads a character FBX/OBJ/ZIP to Mixamo.
         Returns the character_id.
@@ -54,14 +54,23 @@ class MixamoAPIClient:
             result = self.request("POST", "characters", files=files)
             
         logger.info(f"Upload API response: {result}")
-        # Standardize ID retrieval
-        char_id = result.get("character_id") or result.get("id")
+        
+        # Standardize ID retrieval - include 'uuid' as seen in logs
+        char_id = result.get("character_id") or result.get("id") or result.get("uuid")
+        
         if not char_id and "results" in result:
-            # Some endpoints wrap in results
             if isinstance(result["results"], list) and len(result["results"]) > 0:
                 char_id = result["results"][0].get("id")
             elif isinstance(result["results"], dict):
                 char_id = result["results"].get("id")
+        
+        if wait_for_completion and char_id and result.get("status") == "processing":
+            logger.info(f"Character {char_id} is processing. Waiting for completion...")
+            try:
+                self.monitor_export_progress(char_id)
+                logger.info(f"Character {char_id} processing complete.")
+            except Exception as e:
+                logger.error(f"Error while waiting for character processing: {e}")
                 
         return char_id
 
@@ -120,7 +129,7 @@ class MixamoAPIClient:
 
     def monitor_export_progress(self, character_id, interval=5):
         """
-        Polls the character monitor endpoint until the export is completed.
+        Polls the character monitor endpoint until the export or upload is completed.
         Returns the job_result (download URL).
         """
         url = f"characters/{character_id}/monitor"
@@ -131,7 +140,7 @@ class MixamoAPIClient:
             if status == "completed":
                 return data.get("job_result")
             elif status == "failed":
-                raise Exception(f"Export failed: {data.get('message', 'Unknown error')}")
+                raise Exception(f"Job failed: {data.get('message', 'Unknown error')}")
             
             time.sleep(interval)
 

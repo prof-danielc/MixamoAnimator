@@ -86,6 +86,32 @@ def test_upload_character(tmp_path, monkeypatch):
         assert method == "POST"
         assert "characters" in url
 
+def test_upload_character_uuid(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    
+    with patch("requests.request") as mock_req:
+        # Mock processing response with uuid
+        mock_proc = MagicMock()
+        mock_proc.status_code = 200
+        mock_proc.json.return_value = {"status": "processing", "uuid": "uuid_123"}
+        
+        # Mock completion response
+        mock_comp = MagicMock()
+        mock_comp.status_code = 200
+        mock_comp.json.return_value = {"status": "completed", "job_result": "done"}
+        
+        mock_req.side_effect = [mock_proc, mock_comp]
+        
+        fbx_path = tmp_path / "model.fbx"
+        fbx_path.write_text("dummy")
+        
+        with patch("time.sleep", return_value=None):
+            char_id = client.upload_character(str(fbx_path))
+            assert char_id == "uuid_123"
+            assert mock_req.call_count == 2
+
 import json
 
 def test_fetch_animation_catalog_caching(tmp_path, monkeypatch):
