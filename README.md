@@ -1,6 +1,18 @@
 # MixamoAnimator
 
-Automate character uploads and animation downloads from Mixamo using Playwright.
+Automate character uploads and animation downloads from Mixamo using direct API integration and Playwright.
+
+This project is based on the API research and original work of [MixamoHarvester](https://github.com/paulpierre/MixamoHarvester).
+
+## Features
+
+-   **Direct API Integration**: Faster and more robust than web scraping.
+-   **Web Scraping Fallback**: If API fails for any reasons the system uses web scraping.
+-   **Upload Character**: Automatically upload FBX/OBJ/ZIP characters to Mixamo.
+-   **Download Animations**: Concurrent multi-threaded downloads of animations.
+-   **Animation Catalog**: Local caching of the Mixamo animation library.
+-   **Blender Integration**: Script to merge multiple downloaded animations into a single GLB file with NLA tracks.
+-   **Session Management**: Saves login state and API tokens for seamless reuse.
 
 ## Setup
 
@@ -14,70 +26,80 @@ Automate character uploads and animation downloads from Mixamo using Playwright.
     playwright install chromium
     ```
 
+3.  **Authentication:**
+    Create a `mixamo_token.txt` file in the root directory and paste your Mixamo Bearer Token, OR run the script in headful mode once to let it extract the token automatically from your browser session.
+
 ## Usage
 
-Run the main script to start the CLI:
+### Main Application (`main.py`)
+
+Run the main script to start the interactive CLI:
 
 ```bash
 python main.py
 ```
 
-### Command Line Options
+#### Command Line Options
 
--   `--headless`: Run the browser in headless mode (default: False).
--   `--model_path`: Path to the character model (FBX/OBJ/ZIP) to upload.
--   `--output_dir`: Directory to save animations (default: `downloads`).
--   `--limit`: Maximum number of animations to fetch from the catalog (default: 50).
+| Option | Description |
+| :--- | :--- |
+| `--model_path` | Path to the 3D model file (`.fbx`, `.obj`, `.zip`) to upload. |
+| `--headless` | Run browser in headless mode (default). |
+| `--no-headless` | Run browser in headful mode (recommended for first-time login). |
+| `--output_dir` | Directory where animations will be saved (default: `downloads`). |
+| `--limit` | Max animations to fetch from catalog (default: 50). |
+| `--no-skin` | Download animations without skin (smaller files, ideal for Blender). |
+| `--no-refresh-catalog` | Use the local `animations_catalog.json` cache instead of fetching from API. |
+| `--animations` | List of animation names to download (e.g., `--animations Wave "Running Fast"`) to bypass the selection UI. |
 
-### Initial Login & Security
+### Batch Examples
 
-The first time you run the bot, it's recommended to run in **headful mode** (without the `--headless` flag) if you need to handle complex Adobe SSO steps or MFA.
+We've provided several `.bat` files as examples of how to automate the workflow:
 
+-   **`run.bat`**: A simple headless run that uploads `TPose.fbx` and fetches the full catalog (2500 items).
+    ```batch
+    python main.py --headless --model_path TPose.fbx --limit 2500
+    ```
+-   **`run_animation_list.bat`**: Demonstrates how to download specific animations by name without using the interactive UI.
+    ```batch
+    python main.py --model_path TPose.fbx --headless --no-refresh-catalog --animations Wave Waving
+    ```
+-   **`run_merge_animations.bat`**: Runs the Blender merge script.
+    ```batch
+    python merge_animations.py
+    ```
+
+### Merging Animations (`merge_animations.py`)
+
+This script uses Blender (in background mode) to take all animations in your `downloads` folder and merge them onto a single master skeleton. It creates a `.glb` file where each animation is a separate NLA track.
+
+**Usage:**
 ```bash
-python main.py
+python merge_animations.py --folder "./downloads" -- "./textures" --master "TPose.fbx" --output "Merged.glb"
 ```
 
-The bot saves its session to `session.json` after a successful login, so you won't need to login every time. Subsequent runs can be done in headless mode:
+**Parameters:**
+-   `--folder`: Directory containing the FBX files to merge.
+-   `--tex`: Directory to search for textures (recursive search).
+-   `--master`: The base T-Pose/Model file to use as the skeleton.
+-   `--output`: Name of the exported GLB file.
 
-```bash
-python main.py --headless
-```
+*Note: Requires Blender 3.x or 4.x to be installed and in your PATH (or in a standard install location).*
 
-**Security Considerations:**
--   `config.json` stores your Adobe credentials in plain text.
--   `session.json` stores your browser session state, including authentication cookies.
--   Both files are included in `.gitignore` to prevent accidental commits to version control.
--   **Never share these files** or commit them to a public repository.
+## Project Structure
 
-### Configuration
+-   **`bot/`**: Core logic including `MixamoAPIClient` and `MixamoBot`.
+-   **`cli/`**: UI components using `rich` and `inquirer`.
+-   **`config/`**: Settings and configuration management.
+-   **`merge_animations.py`**: A standalone wrapper that executes an embedded Blender script to combine animations.
+-   **`tests/`**: Comprehensive test suite for API and Bot logic.
 
-Settings are stored in `config.json` in the root directory. You can edit this file directly or use the CLI prompts.
+## Credits
 
-```json
-{
-    "email": "your-email@example.com",
-    "password": "your-password"
-}
-```
+Special thanks to [Paul Pierre](https://github.com/paulpierre) and the [MixamoHarvester](https://github.com/paulpierre/MixamoHarvester) project for providing the foundational research on the Mixamo API.
 
-## Features
+## Security
 
--   **Upload Character:** Upload an FBX/OBJ/ZIP character to Mixamo and trigger the auto-rigger.
--   **Download Animations:** Search and download animations for your character.
--   **Batch Processing:** Automate the download of multiple animations with a progress bar.
-
-## Development
-
-### Running Tests
-
-```bash
-python -m pytest tests/
-```
-
-### Project Structure
-
--   `bot/`: Contains `MixamoBot` for Playwright automation.
--   `cli/`: Contains the CLI user interface using `rich` and `inquirer`.
--   `config/`: Contains `SettingsManager` for configuration management.
--   `tests/`: Contains unit and integration tests.
--   `main.py`: Entry point for the application.
+-   `session.json` and `mixamo_token.txt` contain sensitive authentication data.
+-   These files are ignored by git via `.gitignore`.
+-   **Never** share your token or session files publicly.

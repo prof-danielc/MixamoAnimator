@@ -6,8 +6,63 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from pathlib import Path
+import re
 
 logger = logging.getLogger(__name__)
+
+def unique_filename(filename: str) -> str:
+    """
+    Return a unique filename.
+
+    Rules:
+    - If `filename` does not exist, return it unchanged.
+    - If it exists, append `-N` before the extension.
+    - Reuses the next number in sequence among existing files.
+
+    Example:
+        report.txt -> report.txt
+        report.txt exists -> report-1.txt
+        report-1.txt exists too -> report-2.txt
+    """
+    path = Path(filename)
+
+    if not path.exists():
+        print('File does not exist, using original filename:', path)
+        return str(path)
+
+    parent = path.parent
+    stem = path.stem
+    suffix = path.suffix
+
+    # Match:
+    #   name.txt
+    #   name-1.txt
+    #   name-42.txt
+    pattern = re.compile(rf"^{re.escape(stem)}(?:-(\d+))?{re.escape(suffix)}$")
+
+    used_numbers = set()
+    base_exists = False
+
+    for item in parent.iterdir():
+        if not item.is_file():
+            continue
+        m = pattern.match(item.name)
+        if not m:
+            continue
+        if m.group(1) is None:
+            base_exists = True
+        else:
+            used_numbers.add(int(m.group(1)))
+
+    if not base_exists:
+        return str(path)
+
+    n = 1
+    while n in used_numbers:
+        n += 1
+
+    return str(parent / f"{stem}-{n}{suffix}")
 
 class MixamoAPIClient:
     BASE_URL = "https://www.mixamo.com/api/v1"
@@ -76,11 +131,12 @@ class MixamoAPIClient:
                 
         return char_id
 
-    def fetch_animation_catalog(self, limit=100, force_refresh=False):
+    def fetch_animation_catalog(self, limit=100, force_refresh=True):
         """
         Fetches the animation catalog from Mixamo API and caches it locally.
         Returns a list of animation objects.
         """
+        print(f"Fetching animation catalog with limit={limit} and force_refresh={force_refresh}")
         if not force_refresh and os.path.exists(self.catalog_file):
             with open(self.catalog_file, "r") as f:
                 return json.load(f)
@@ -157,10 +213,12 @@ class MixamoAPIClient:
         anim_id = anim["id"]
         anim_name = anim["name"]
         suffix = "with_skin" if include_skin else "no_skin"
-        filename = f"{anim_name}_{character_id}_{suffix}.fbx"
+        filename = f"{anim_name}_{anim_id}_{character_id}_{suffix}.fbx"
         output_path = os.path.join(output_dir, filename)
+        output_path = unique_filename(output_path)
         
         if os.path.exists(output_path):
+            logger.info(f"Output path already exists for animation {anim_name}: {output_path}")
             return True
             
         product_data = self.get_product(anim_id, character_id)

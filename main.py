@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--output_dir", type=str, default="downloads", help="Directory to save animations")
     parser.add_argument("--limit", type=int, default=20, help="Maximum number of animations to fetch from catalog (Mixamo has ~2500)")
     parser.add_argument("--no-skin", action="store_true", default=False, help="Download animations without skin (useful for Blender)")
+    parser.add_argument("--no-refresh-catalog", action="store_false", default=True, help="Uses animation catalog cache")
+    parser.add_argument("--animations", nargs="+", type=str, default=None, help="List of animation names to download (bypasses selection UI)")
     
     args = parser.parse_args()
     ui = UI()
@@ -71,16 +73,31 @@ def main():
 
         # 6. Fetch Catalog
         ui.print_message("Fetching animation catalog...")
-        catalog = bot.fetch_animation_catalog(limit=args.limit)
+        catalog = bot.fetch_animation_catalog(limit=args.limit, force_refresh=args.no_refresh_catalog)
         if not catalog:
             ui.print_error("Failed to fetch animation catalog.")
             sys.exit(1)
         
         # 7. Selection
-        selected_anims = ui.select_animations(catalog)
-        if not selected_anims:
-            ui.print_message("No animations selected. Exiting.")
-            return
+        if args.animations:
+            # If animations were specified via CLI, filter the catalog accordingly
+            # this is case insensitive and partial match based on the animation name
+            selected_anims = [
+                anim for anim in catalog
+                if any(
+                    chosen.lower() in anim["name"].lower()
+                    for chosen in args.animations
+                )
+            ]
+            
+            if not selected_anims:
+                ui.print_error(f"No matching animations in catalog for the specified names in list: {args.animations} .")
+                sys.exit(1)
+        else:
+            selected_anims = ui.select_animations(catalog)
+            if not selected_anims:
+                ui.print_message("No animations selected. Exiting.")
+                return
 
         # 8. Batch Download
         ui.print_header(f"Downloading {len(selected_anims)} Animations")

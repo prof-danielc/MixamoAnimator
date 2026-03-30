@@ -1,6 +1,8 @@
 pytest
+pytest-mock
 playwright
 inquirer
 rich
 tenacity
 requests
+tqdm

@@ -1,3 +1,4 @@
+from fileinput import filename
 import os
 import logging
 import time
@@ -5,7 +6,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Callable
 import re
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Error as PlaywrightError
-from bot.mixamo_api_client import MixamoAPIClient
+from bot.mixamo_api_client import MixamoAPIClient, unique_filename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -233,14 +234,14 @@ class MixamoBot:
             return True
         except: return False
 
-    def fetch_animation_catalog(self, limit: int = 50) -> List[Dict]:
+    def fetch_animation_catalog(self, limit: int = 50, force_refresh: bool = False) -> List[Dict]:
         """
         Fetches animation catalog. Prefers API, falls back to Playwright.
         """
         if self.api_client:
             try:
                 logger.info("Fetching animation catalog via API...")
-                return self.api_client.fetch_animation_catalog(limit=limit)
+                return self.api_client.fetch_animation_catalog(limit=limit, force_refresh=force_refresh)
             except Exception as e:
                 logger.error(f"API catalog fetch failed: {e}. Falling back to Playwright.")
 
@@ -355,18 +356,27 @@ class MixamoBot:
                     results[aid] = False; continue
                 with self.page.expect_download(timeout=60000) as d_info:
                     m_btn.click()
+                    
                 download = d_info.value
                 orig_filename = download.suggested_filename
                 base, ext = os.path.splitext(orig_filename)
                 safe_name = "".join([c for c in aname if c.isalnum() or c in (' ', '_', '-')]).strip().replace(' ', '_')
-                new_filename = f"{base}_{safe_name}{ext}"
-                path = os.path.join(output_dir, new_filename)
+                #new_filename = f"{base}_{safe_name}{ext}"
+                suffix = "with_skin" if include_skin else "no_skin"
+                new_filename = f"{aname}_{aid}_{self.character_id}_{suffix}.fbx"
+                
+                '''path = os.path.join(output_dir, new_filename)
                 counter = 1
                 while os.path.exists(path):
                     new_filename = f"{base}_{safe_name}_{counter}{ext}"
                     path = os.path.join(output_dir, new_filename)
-                    counter += 1
+                    counter += 1'''
+                    
+                path = os.path.join(output_dir, new_filename)
+                path = unique_filename(path)
+                
                 download.save_as(path)
+                
                 results[aid] = True
                 download_times.append(time.time() - start_time)
             except Exception as e:

@@ -1,0 +1,1 @@
+python main.py --headless --model_path TPose.fbx --limit 2500
