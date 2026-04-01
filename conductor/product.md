@@ -16,7 +16,8 @@ A desktop-based automation tool for hobbyist artists to effortlessly map Mixamo 
 - **API-Driven Animation Mapping:** Direct integration with Mixamo API for robust character upload and animation data transfer.
 - **Multi-threaded Batch Downloads:** Concurrent animation exports and downloads for significantly improved performance.
 - **Real-time Playback GUI:** A standalone PyQt/PySide-based desktop window for loading models, listing animations, and interactive playback.
-- **Parametric Interface:** Simple command-line initialization with `--model_path` and optional `--limit`.
+- **Parametric Interface:** Simple command-line initialization with `--model_path` and optional `--limit`. Supports optional `--inplace` flag for root motion locking.
+- **Optional 'In-Place' Motion:** Ability to force animations to stay at the origin, useful for game development workflows.
 
 ## Success Criteria
 - Successful loading of a skinned FBX model.
