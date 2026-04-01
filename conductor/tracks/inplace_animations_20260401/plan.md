@@ -24,8 +24,8 @@ Expose the "in-place" option to the user via the command-line interface.
 - [x] Task: Verify tests pass for CLI changes. 74f1e4f
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Update CLI (main.py)' (Protocol in workflow.md)
 
-## Phase 4: Final Integration and Verification
+## Phase 4: Final Integration and Verification [checkpoint: 96b555b]
 Perform a complete end-to-end test of the new feature.
 
-- [ ] Task: Perform a manual end-to-end download test with `--inplace` and verify the resulting FBX file (check in-place motion and filename).
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Integration and Verification' (Protocol in workflow.md)
+- [x] Task: Perform a manual end-to-end download test with `--inplace` and verify the resulting FBX file (check in-place motion and filename). 96b555b
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Integration and Verification' (Protocol in workflow.md)
