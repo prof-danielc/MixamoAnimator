@@ -13,12 +13,12 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [ ] **Track: Download UX Enhancements (ETA & Progress Counter)**
   *Link: [./tracks/download_ux_enhancements_20260323/](./tracks/download_ux_enhancements_20260323/)*
 
-- [x] **Track: In-place animations**
-  *Link: [./tracks/inplace_animations_20260401/](./tracks/inplace_animations_20260401/)*
-
 ---
 
 ## Archived Tracks
 
 - [x] **Track: Mixamo API Pivot**
   *Link: [./archive/mixamo_api_pivot_20260326/](./archive/mixamo_api_pivot_20260326/)*
+
+- [x] **Track: In-place animations**
+  *Link: [./archive/inplace_animations_20260401/](./archive/inplace_animations_20260401/)*
