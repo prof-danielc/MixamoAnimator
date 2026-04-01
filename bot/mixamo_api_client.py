@@ -165,10 +165,14 @@ class MixamoAPIClient:
         url = f"products/{anim_id}?similar=0&character_id={character_id}"
         return self.request("GET", url)
 
-    def export_animation(self, character_id, gms_hash_array, product_name, include_skin=True):
+    def export_animation(self, character_id, gms_hash_array, product_name, include_skin=True, inplace=False):
         """
         Triggers an animation export for a specific character.
         """
+        if inplace:
+            for gms_hash in gms_hash_array:
+                gms_hash["inplace"] = True
+
         url = "animations/export"
         payload = {
             "character_id": character_id,
@@ -209,11 +213,15 @@ class MixamoAPIClient:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-    def _process_single_animation(self, character_id, anim, output_dir, include_skin=True):
+    def _process_single_animation(self, character_id, anim, output_dir, include_skin=True, inplace=False):
         anim_id = anim["id"]
         anim_name = anim["name"]
         suffix = "with_skin" if include_skin else "no_skin"
-        filename = f"{anim_name}_{anim_id}_{character_id}_{suffix}.fbx"
+        if inplace:
+            filename = f"{anim_name}_inplace_{anim_id}_{character_id}_{suffix}.fbx"
+        else:
+            filename = f"{anim_name}_{anim_id}_{character_id}_{suffix}.fbx"
+        
         output_path = os.path.join(output_dir, filename)
         output_path = unique_filename(output_path)
         
@@ -231,13 +239,13 @@ class MixamoAPIClient:
         # Use lock to ensure only one export job is triggered at a time per character
         with self._export_lock:
             logger.info(f"Triggering export for {anim_name}...")
-            self.export_animation(character_id, [gms_hash], anim_name, include_skin=include_skin)
+            self.export_animation(character_id, [gms_hash], anim_name, include_skin=include_skin, inplace=inplace)
             download_url = self.monitor_export_progress(character_id)
             
         self._download_file(download_url, output_path)
         return True
 
-    def download_animations(self, character_id, animations, output_dir, max_workers=5, progress_callback=None, include_skin=True):
+    def download_animations(self, character_id, animations, output_dir, max_workers=5, progress_callback=None, include_skin=True, inplace=False):
         """
         Concurrent download of animations.
         """
@@ -247,7 +255,7 @@ class MixamoAPIClient:
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_anim = {
-                executor.submit(self._process_single_animation, character_id, anim, output_dir, include_skin=include_skin): anim 
+                executor.submit(self._process_single_animation, character_id, anim, output_dir, include_skin=include_skin, inplace=inplace): anim 
                 for anim in animations
             }
             

@@ -199,3 +199,63 @@ def test_export_animation_no_skin(tmp_path, monkeypatch):
         args, kwargs = mock_req.call_args
         payload = kwargs["json"]
         assert payload["preferences"]["skin"] == "false"
+
+def test_export_animation_inplace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    with patch("requests.request") as mock_req:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"job_id": "job_123"}
+        mock_req.return_value = mock_response
+        
+        gms_hash = {"params": "1,2,3"}
+        client.export_animation("char_123", [gms_hash], "Walk", inplace=True)
+        
+        args, kwargs = mock_req.call_args
+        payload = kwargs["json"]
+        assert payload["gms_hash"][0]["inplace"] is True
+
+def test_process_single_animation_inplace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mixamo_token.txt").write_text("token")
+    client = MixamoAPIClient()
+    anims = [{"id": "anim_1", "name": "Walk"}]
+    output_dir = str(tmp_path / "output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with patch("requests.request") as mock_req, \
+         patch("requests.get") as mock_get, \
+         patch("time.sleep", return_value=None):
+        
+        mock_product = MagicMock()
+        mock_product.status_code = 200
+        mock_product.json.return_value = {"details": {"gms_hash": {"params": [[0, "val"]]}}}
+        mock_export = MagicMock()
+        mock_export.status_code = 200
+        mock_export.json.return_value = {"job_id": "job_1"}
+        mock_monitor = MagicMock()
+        mock_monitor.status_code = 200
+        mock_monitor.json.return_value = {"status": "completed", "job_result": "http://dl.url"}
+        mock_req.side_effect = [mock_product, mock_export, mock_monitor]
+        
+        mock_dl = MagicMock()
+        mock_dl.status_code = 200
+        mock_dl.iter_content.return_value = [b"fbx_data"]
+        mock_get.return_value = mock_dl
+        
+        # Test with inplace=True
+        client._process_single_animation("char_123", anims[0], output_dir, inplace=True)
+        
+        # Verify filename contains _inplace
+        expected_filename = "Walk_inplace_anim_1_char_123_with_skin.fbx"
+        assert os.path.exists(os.path.join(output_dir, expected_filename))
+        
+        # Verify export_animation was called with inplace=True
+        # export_animation is the second call in the side_effect sequence for mock_req
+        # but wait, mock_req is called inside export_animation which is called by _process_single_animation
+        # Let's verify the payload of the export call
+        args, kwargs = mock_req.call_args_list[1]
+        payload = kwargs["json"]
+        assert payload["gms_hash"][0]["inplace"] is True
