@@ -6,14 +6,14 @@ Research and verify the "in-place" parameter in the Mixamo API requests to ensur
 - [x] Task: Verify the Mixamo API's handling of the `inplace` parameter by manually inspecting a network request if possible, or by cross-referencing `Research/mixamo_API_code.js` logic with current `MixamoAPIClient` behavior. 12ada4e
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Research and API Verification' (Protocol in workflow.md)
 
-## Phase 2: Update MixamoAPIClient
+## Phase 2: Update MixamoAPIClient [checkpoint: fdcc048]
 Implement the `inplace` parameter in the core API client.
 
 - [x] Task: Write Tests for `MixamoAPIClient.export_animation` and `_process_single_animation` to support the `inplace` flag. d0f5a87
 - [x] Task: Update `MixamoAPIClient.export_animation` to accept an `inplace` boolean and inject it into the `gms_hash` (or preferences) in the payload. d0f5a87
 - [x] Task: Update `MixamoAPIClient._process_single_animation` and `download_animations` to handle the `inplace` flag and the new filename suffix. d0f5a87
-- [ ] Task: Verify tests pass for `MixamoAPIClient` changes.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Update MixamoAPIClient' (Protocol in workflow.md)
+- [x] Task: Verify tests pass for `MixamoAPIClient` changes. fdcc048
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Update MixamoAPIClient' (Protocol in workflow.md)
 
 ## Phase 3: Update CLI (main.py)
 Expose the "in-place" option to the user via the command-line interface.
