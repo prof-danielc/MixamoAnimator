@@ -13,7 +13,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [ ] **Track: Download UX Enhancements (ETA & Progress Counter)**
   *Link: [./tracks/download_ux_enhancements_20260323/](./tracks/download_ux_enhancements_20260323/)*
 
-- [ ] **Track: In-place animations**
+- [x] **Track: In-place animations**
   *Link: [./tracks/inplace_animations_20260401/](./tracks/inplace_animations_20260401/)*
 
 ---
