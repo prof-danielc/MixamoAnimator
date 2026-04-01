@@ -8,39 +8,38 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from pathlib import Path
 import re
-from typing import List, Dict, Optional, Callable
-from playwright.sync_api import sync_playwright
-from .mixamo_api_client import MixamoAPIClient
+from typing import Optional, List, Dict, Callable
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Error as PlaywrightError
+from bot.mixamo_api_client import MixamoAPIClient, unique_filename
 
 logger = logging.getLogger(__name__)
 
-def is_on_dashboard(page):
-    return "mixamo.com/#/" in page.url and "login" not in page.url
-
 class MixamoBot:
-    LOGIN_URL = "https://www.mixamo.com/login"
-    SESSION_FILE = "mixamo_session.json"
+    """
+    Automates interactions with the Mixamo website.
+    Now prioritizes direct API calls via MixamoAPIClient with Playwright as a fallback.
+    """
+
+    LOGIN_URL = "https://www.mixamo.com/"
+    SESSION_FILE = "session.json"
     TOKEN_FILE = "mixamo_token.txt"
 
-    def __init__(self, headless=False, API=True, token_file="mixamo_token.txt"):
+    def __init__(self, headless: bool = False):
         self.headless = headless
-        self.page = None
         self._playwright = None
-        self._browser = None
-        self._context = None
-        self.character_id = None
-        self.api_client = None
-        self.TOKEN_FILE = token_file
+        self._browser: Optional[Browser] = None
+        self._context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
 
-        if API:
-            try:
-                self.api_client = MixamoAPIClient(token_file=token_file)
-                logger.debug("MixamoBot initialized (headless=%s, API=True)", headless)
-            except Exception:
-                self.api_client = None
-                logger.debug("MixamoBot initialized (headless=%s, API=False)", headless)
+        self.character_id: Optional[str] = None
+        self.api_client: Optional[MixamoAPIClient] = None
+
+        self._refresh_api_client()
+
+        print(f"DEBUG: MixamoBot initialized (headless={headless}, API={self.api_client is not None})")        
 
     def _refresh_api_client(self):
+        """Attempts to initialize or re-initialize the API client."""
         if os.path.exists(self.TOKEN_FILE):
             try:
                 self.api_client = MixamoAPIClient(token_file=self.TOKEN_FILE)
@@ -49,9 +48,15 @@ class MixamoBot:
                 logger.error(f"Failed to initialize API client: {e}")
 
     def _extract_and_save_token(self) -> bool:
+        """
+        Extracts the access token from the browser's local storage and saves it to a file.
+        """
         if not self.page:
             return False
+
         try:
+            # The token is usually stored in local storage under a key like 'access_token'
+            # or within a larger auth object.
             token = self.page.evaluate("localStorage.getItem('access_token')")
             if token:
                 with open(self.TOKEN_FILE, "w") as f:
@@ -81,21 +86,11 @@ class MixamoBot:
         if self._browser: self._browser.close()
         if self._playwright: self._playwright.stop()
 
-    def is_logged_in(self) -> bool:
-        if not self.page: return False
-        try:
-            if "login" in self.page.url or "imsauth" in self.page.url: return False
-            if self.page.get_by_text("UPLOAD CHARACTER", exact=False).count() > 0:
-                if self.page.get_by_text("UPLOAD CHARACTER", exact=False).first.is_visible():
-                    return True
-            return "mixamo.com/#/" in self.page.url and self.page.get_by_text("Log in", exact=False).count() == 0
-        except: return False
-
     def login(self, email: str, password: str) -> bool:
         print("DEBUG: RUNNING LATEST MIXAMO BOT VERSION 2026-03-26-API-AUTO-TOKEN")
         if not self.page: self.start()
 
-        def is_on_dashboard_local():
+        def is_on_dashboard():
             return "mixamo.com/#/" in self.page.url and "login" not in self.page.url
 
         logger.info(f"Navigating to {self.LOGIN_URL}...")
@@ -114,36 +109,40 @@ class MixamoBot:
                 login_btn.click()
                 self.page.wait_for_load_state("networkidle")
 
-            if is_on_dashboard_local(): 
+            if is_on_dashboard(): 
                 self._extract_and_save_token()
                 return True
 
+            # Email step
             email_selector = 'input#EmailPage-EmailField, input[name="username"]'
             self.page.wait_for_selector(email_selector, timeout=20000)
             email_input = self.page.locator(email_selector).first
             email_input.click()
             email_input.press_sequentially(email, delay=100)
             email_input.press("Enter")
-            
+
+            # Transition
             for _ in range(20):
-                if is_on_dashboard_local(): 
+                if is_on_dashboard(): 
                     self._extract_and_save_token()
                     return True
                 if self.page.get_by_text("Personal Account", exact=False).is_visible() or self.page.locator('input[type="password"]').is_visible():
                     break
                 self.page.wait_for_timeout(2000)
 
+            # Account select
             account_btn = self.page.get_by_text("Personal Account", exact=False).or_(self.page.get_by_text("Personal ID", exact=False)).first
             if account_btn.count() > 0 and account_btn.is_visible():
                 account_btn.click()
                 self.page.wait_for_timeout(3000)
 
-            if is_on_dashboard_local(): 
+            # Password step
+            if is_on_dashboard(): 
                 self._extract_and_save_token()
                 return True
             password_input = self.page.locator('input[type="password"]').filter(visible=True).first
             if password_input.count() == 0: 
-                if is_on_dashboard_local():
+                if is_on_dashboard():
                     self._extract_and_save_token()
                     return True
                 return False
@@ -157,12 +156,26 @@ class MixamoBot:
             self._extract_and_save_token()
             return True
         except Exception as e:
-            if is_on_dashboard_local(): 
+            if is_on_dashboard(): 
                 self._extract_and_save_token()
                 return True
             logger.error(f"Login failed: {e}"); return False
 
+    def is_logged_in(self) -> bool:
+        if not self.page: return False
+        try:
+            if "login" in self.page.url or "imsauth" in self.page.url: return False
+            # Check for UPLOAD CHARACTER button
+            if self.page.get_by_text("UPLOAD CHARACTER", exact=False).count() > 0:
+                if self.page.get_by_text("UPLOAD CHARACTER", exact=False).first.is_visible():
+                    return True
+            return "mixamo.com/#/" in self.page.url and self.page.get_by_text("Log in", exact=False).count() == 0
+        except: return False
+
     def upload_character(self, file_path: str) -> bool:
+        """
+        Uploads character. Prefers API, falls back to Playwright.
+        """
         if self.api_client:
             try:
                 logger.info(f"Uploading character via API: {file_path}")
@@ -171,7 +184,7 @@ class MixamoBot:
                     logger.info(f"API upload successful. Character ID: {self.character_id}")
                     return True
                 else:
-                    logger.warning("API upload did not return a character ID. Falling back to Playwright.")
+                    logger.warning("API upload did not return a character ID. Falling back to Playwright.")    
             except Exception as e:
                 logger.error(f"API upload failed: {e}. Falling back to Playwright.")
 
@@ -187,25 +200,50 @@ class MixamoBot:
                 for f in self.page.frames:
                     loc = f.get_by_text("UPLOAD CHARACTER", exact=False).first
                     if loc.is_visible(): upload_btn = loc; break
-            
-            upload_btn.click()
-            self.page.wait_for_selector('input[type="file"]')
-            self.page.set_input_files('input[type="file"]', file_path)
-            self.page.wait_for_selector('text=Next', timeout=120000)
-            self.page.click('text=Next')
-            self.page.wait_for_timeout(2000)
-            self.page.click('text=Next')
-            self.page.wait_for_load_state("networkidle")
-            return True
-        except Exception as e:
-            logger.error(f"Playwright upload failed: {e}")
-            return False
 
-    def fetch_animation_catalog(self, limit: int = 100, force_refresh: bool = True) -> List[Dict[str, str]]:
+            if not (upload_btn and upload_btn.is_visible()): return False
+
+            # Set file logic
+            input_found = False
+            for attempt in range(15):
+                for f in self.page.frames:
+                    inp = f.locator('input[type="file"]').first
+                    if inp.count() > 0:
+                        inp.set_input_files(file_path); input_found = True; break
+                if input_found: break
+                if attempt == 0 or attempt == 5: upload_btn.click(force=True)
+                self.page.wait_for_timeout(3000)
+
+            if not input_found: return False
+
+            # Wizard
+            def click_next(timeout):
+                end = self.page.evaluate("Date.now()") + timeout
+                while self.page.evaluate("Date.now()") < end:
+                    for f in self.page.frames:
+                        for s in ['button:has-text("Next")', 'button:has-text("Finish")', 'text="Next"']:      
+                            try:
+                                l = f.locator(s).first
+                                if l.is_visible() and l.is_enabled():
+                                    l.click(); return True
+                            except: continue
+                    self.page.wait_for_timeout(5000)
+                return False
+
+            if not click_next(180000): return False
+            click_next(45000); self.page.wait_for_timeout(3000); click_next(45000)
+            logger.info("Upload complete.")
+            return True
+        except: return False
+
+    def fetch_animation_catalog(self, limit: int = 50, force_refresh: bool = False) -> List[Dict]:
+        """
+        Fetches animation catalog. Prefers API, falls back to Playwright.
+        """
         if self.api_client:
             try:
-                logger.info("Fetching catalog via API...")
-                return self.api_client.fetch_animation_catalog(limit=limit, force_refresh=force_refresh)
+                logger.info("Fetching animation catalog via API...")
+                return self.api_client.fetch_animation_catalog(limit=limit, force_refresh=force_refresh)       
             except Exception as e:
                 logger.error(f"API catalog fetch failed: {e}. Falling back to Playwright.")
 
@@ -213,14 +251,43 @@ class MixamoBot:
         try:
             animations = []
             page_num = 1
+            logger.info(f"Fetching up to {limit} animations via pagination (Playwright)...")
             while len(animations) < limit:
-                url = f"https://www.mixamo.com/#/?page={page_num}&query=&type=Motion%2CMotionPack"
+                url = f"https://www.mixamo.com/#/?page={page_num}&type=Motion"
                 self.page.goto(url)
-                self.page.wait_for_load_state("networkidle")
-                self.page.wait_for_timeout(2000)
-                
-                # Logic to extract animations from page (simplified for brevity)
-                # In a real implementation, you'd parse the DOM
+                self.page.wait_for_load_state("networkidle", timeout=30000)
+                self.page.wait_for_timeout(5000)
+                selectors = ['.product', '.animation-card', '[data-product-id]']
+                found_on_page = []
+                for f in self.page.frames:
+                    for sel in selectors:
+                        try:
+                            cards = f.locator(sel).all()
+                            for card in cards:
+                                cl = card.get_attribute('class') or ""
+                                if 'character' in cl.lower() and 'motion' not in cl.lower(): continue
+                                pid = card.get_attribute('data-product-id')
+                                if not pid:
+                                    img = card.locator('img').first
+                                    if img.count() > 0:
+                                        src = img.get_attribute('src')
+                                        m = re.search(r'motions/(\d+)/', src)
+                                        if m: pid = m.group(1)
+                                if pid and not any(a['id'] == pid for a in animations):
+                                    name = "Unknown"
+                                    for ns in ['p', 'h3', 'b']:
+                                        el = card.locator(ns).first
+                                        if el.count() > 0:
+                                            t = el.inner_text().strip()
+                                            if t: name = t; break
+                                    animations.append({"id": pid, "name": name})
+                                    found_on_page.append(pid)
+                                    if len(animations) >= limit: break
+                                if len(animations) >= limit: break
+                            if len(animations) >= limit: break
+                        except: continue
+                    if len(animations) >= limit: break
+                if not found_on_page: break
                 page_num += 1
                 if page_num > 100: break
             return animations
@@ -264,31 +331,54 @@ class MixamoBot:
             try:
                 logger.info(f"Downloading {i+1}/{total_count}: {aname} ({aid})")
                 self.page.goto(f"https://www.mixamo.com/#/?page=1&query=&type=Motion%2CCharacter&product_id={aid}")
-                self.page.wait_for_load_state("networkidle")
+                self.page.wait_for_load_state("networkidle", timeout=30000)
                 self.page.wait_for_timeout(5000)
-                
+
                 if inplace:
                     # In Playwright mode, we would need to find the "In Place" checkbox and click it.
                     # This is complex and might depend on the specific animation.
                     # For now, we log a warning that inplace is not fully supported in Playwright fallback.
                     logger.warning("Inplace option requested but Playwright fallback does not yet support clicking the checkbox.")
 
-                with self.page.expect_download(timeout=60000) as download_info:
-                    self.page.get_by_text("Download", exact=False).first.click()
+                dl_btn = self.page.get_by_text("Download", exact=False).first
+                if not dl_btn.is_visible():
+                    for f in self.page.frames:
+                        loc = f.get_by_text("Download", exact=False).first
+                        if loc.is_visible(): dl_btn = loc; break
+                if not (dl_btn and dl_btn.is_visible()):
+                    results[aid] = False; continue
+                dl_btn.click()
+                m_btn = None
+                for _ in range(10):
+                    for f in self.page.frames:
+                        try:
+                            loc = f.locator('.modal-footer').get_by_text("Download", exact=False).first        
+                            if loc.count() > 0 and loc.is_visible(): m_btn = loc; break
+                        except: continue
+                    if m_btn: break
                     self.page.wait_for_timeout(2000)
-                    self.page.get_by_role("button", name="Download").click()
-                
-                download = download_info.value
+                if not m_btn:
+                    results[aid] = False; continue
+                with self.page.expect_download(timeout=60000) as d_info:
+                    m_btn.click()
+
+                download = d_info.value
                 suffix = "with_skin" if include_skin else "no_skin"
                 if inplace:
                     filename = f"{aname}_inplace_{aid}_{self.character_id}_{suffix}.fbx"
                 else:
                     filename = f"{aname}_{aid}_{self.character_id}_{suffix}.fbx"
-                
-                download.save_as(os.path.join(output_dir, filename))
+
+                path = os.path.join(output_dir, filename)
+                path = unique_filename(path)
+
+                download.save_as(path)
                 results[aid] = True
                 download_times.append(time.time() - start_time)
             except Exception as e:
-                logger.error(f"Failed to download {aname}: {e}")
+                logger.error(f"Failed {aname}: {e}")
                 results[aid] = False
         return results
+
+    def __enter__(self): self.start(); return self
+    def __exit__(self, x, y, z): self.stop()
