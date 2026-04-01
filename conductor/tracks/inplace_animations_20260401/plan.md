@@ -18,9 +18,9 @@ Implement the `inplace` parameter in the core API client.
 ## Phase 3: Update CLI (main.py)
 Expose the "in-place" option to the user via the command-line interface.
 
-- [ ] Task: Write Tests for `main.py` CLI arguments.
-- [ ] Task: Add `--inplace` flag to `main.py` using `argparse`.
-- [ ] Task: Ensure the `inplace` flag is passed through to the `MixamoAPIClient`.
+- [x] Task: Write Tests for `main.py` CLI arguments. fb93461
+- [x] Task: Add `--inplace` flag to `main.py` using `argparse`. fb93461
+- [x] Task: Ensure the `inplace` flag is passed through to the `MixamoAPIClient`. fb93461
 - [ ] Task: Verify tests pass for CLI changes.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Update CLI (main.py)' (Protocol in workflow.md)
 
