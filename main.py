@@ -12,11 +12,7 @@ from cli.ui import UI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def main():
-    """
-    Main entry point for the MixamoAnimator bot.
-    Coordinates settings, the Playwright bot, and the terminal UI.
-    """
+def create_parser():
     parser = argparse.ArgumentParser(description="Mixamo Animator Bot")
     parser.add_argument("--model_path", type=str, help="Path to the 3D model file (fbx, obj, zip)")
     parser.add_argument("--headless", action="store_true", default=False, help="Run browser in headless mode")
@@ -24,9 +20,19 @@ def main():
     parser.add_argument("--output_dir", type=str, default="downloads", help="Directory to save animations")
     parser.add_argument("--limit", type=int, default=20, help="Maximum number of animations to fetch from catalog (Mixamo has ~2500)")
     parser.add_argument("--no-skin", action="store_true", default=False, help="Download animations without skin (useful for Blender)")
+    parser.add_argument("--inplace", action="store_true", default=False, help="Download animations in place (root motion locked to origin)")
     parser.add_argument("--no-refresh-catalog", action="store_false", default=True, help="Uses animation catalog cache")
-    parser.add_argument("--animations", nargs="+", type=str, default=None, help="List of animation names to download (bypasses selection UI)")
-    
+    parser.add_argument("--animations_names", nargs="+", type=str, default=None, help="List of animation names to download (bypasses selection UI)")
+    parser.add_argument("--animations_ids", nargs="+", type=str, default=None, help="List of animation ids to download (bypasses selection UI)")
+    parser.add_argument("--animations_descriptions", nargs="+", type=str, default=None, help="List of animation descriptions to download (bypasses selection UI)")
+    return parser
+
+def main():
+    """
+    Main entry point for the MixamoAnimator bot.
+    Coordinates settings, the Playwright bot, and the terminal UI.
+    """
+    parser = create_parser()
     args = parser.parse_args()
     ui = UI()
     settings = SettingsManager()
@@ -79,21 +85,60 @@ def main():
             sys.exit(1)
         
         # 7. Selection
-        if args.animations:
+        selected_anims = []
+        
+        if args.animations_names:
             # If animations were specified via CLI, filter the catalog accordingly
             # this is case insensitive and partial match based on the animation name
-            selected_anims = [
+            selected_anims_tmp = [
                 anim for anim in catalog
                 if any(
                     chosen.lower() in anim["name"].lower()
-                    for chosen in args.animations
+                    for chosen in args.animations_names
                 )
             ]
             
-            if not selected_anims:
-                ui.print_error(f"No matching animations in catalog for the specified names in list: {args.animations} .")
+            if not selected_anims_tmp:
+                ui.print_error(f"No matching animations in catalog for the specified names.")
                 sys.exit(1)
-        else:
+            else:
+                selected_anims.extend(selected_anims_tmp)
+
+        if args.animations_ids:
+            # If animations were specified via CLI, filter the catalog accordingly
+            # this is case insensitive and partial match based on the animation name
+            selected_anims_tmp = [
+                anim for anim in catalog
+                if any(
+                    chosen.lower() in anim["id"].lower()
+                    for chosen in args.animations_ids
+                )
+            ]
+            
+            if not selected_anims_tmp:
+                ui.print_error(f"No matching animations in catalog for the specified ids.")
+                sys.exit(1)
+            else:
+                selected_anims.extend(selected_anims_tmp)
+                
+        if args.animations_descriptions:
+            # If animations were specified via CLI, filter the catalog accordingly
+            # this is case insensitive and partial match based on the animation name
+            selected_anims_tmp = [
+                anim for anim in catalog
+                if any(
+                    chosen.lower() in anim["description"].lower()
+                    for chosen in args.animations_descriptions
+                )
+            ]
+            
+            if not selected_anims_tmp:
+                ui.print_error(f"No matching animations in catalog for the specified descriptions.")
+                sys.exit(1)
+            else:
+                selected_anims.extend(selected_anims_tmp)
+        
+        if not selected_anims:
             selected_anims = ui.select_animations(catalog)
             if not selected_anims:
                 ui.print_message("No animations selected. Exiting.")
@@ -120,7 +165,8 @@ def main():
                 selected_anims, 
                 args.output_dir, 
                 progress_callback=progress_callback,
-                include_skin=not args.no_skin
+                include_skin=not args.no_skin,
+                inplace=args.inplace
             )
             progress.update(task, description="[green]All downloads complete!", completed=len(selected_anims))
 
