@@ -44,13 +44,16 @@ python main.py
 | Option | Description |
 | :--- | :--- |
 | `--model_path` | Path to the 3D model file (`.fbx`, `.obj`, `.zip`) to upload. |
-| `--headless` | Run browser in headless mode (default). |
+| `--headless` | Run browser in headless mode (default: False). |
 | `--no-headless` | Run browser in headful mode (recommended for first-time login). |
 | `--output_dir` | Directory where animations will be saved (default: `downloads`). |
-| `--limit` | Max animations to fetch from catalog (default: 50). |
+| `--limit` | Max animations to fetch from catalog (default: 20). |
 | `--no-skin` | Download animations without skin (smaller files, ideal for Blender). |
+| `--inplace` | Download animations in place (root motion locked to origin). |
 | `--no-refresh-catalog` | Use the local `animations_catalog.json` cache instead of fetching from API. |
-| `--animations` | List of animation names to download (e.g., `--animations Wave "Running Fast"`) to bypass the selection UI. |
+| `--animations_names` | List of animation names to download (e.g., `--animations_names Wave "Running Fast"`) to bypass the selection UI. |
+| `--animations_ids` | List of specific animation IDs to download. |
+| `--animations_descriptions` | List of animation descriptions to search and download. |
 
 ### Batch Examples
 
@@ -60,9 +63,13 @@ We've provided several `.bat` files as examples of how to automate the workflow:
     ```batch
     python main.py --headless --model_path TPose.fbx --limit 2500
     ```
--   **`run_animation_list.bat`**: Demonstrates how to download specific animations by name without using the interactive UI.
+-   **`run_animation_names.bat`**: Demonstrates how to download specific animations by name without using the interactive UI.
     ```batch
-    python main.py --model_path TPose.fbx --headless --no-refresh-catalog --animations Wave Waving
+    python main.py --model_path TPose.fbx --headless --no-refresh-catalog --animations_names Wave Waving
+    ```
+-   **`run_animation_descriptions.bat`**: Demonstrates how to search by description and use the `--inplace` flag.
+    ```batch
+    python main.py --model_path TPose.fbx --headless --no-refresh-catalog --inplace --animations_descriptions "Running Leaning Back Or Forth"
     ```
 -   **`run_merge_animations.bat`**: Runs the Blender merge script.
     ```batch
