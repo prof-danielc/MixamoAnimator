@@ -1,0 +1,1 @@
+python main.py --model_path TPose.fbx --headless --no-refresh-catalog --inplace --animations_descriptions "Running Leaning Back Or Forth"

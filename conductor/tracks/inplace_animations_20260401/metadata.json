@@ -1,8 +1,0 @@
-{
-  "track_id": "inplace_animations_20260401",
-  "type": "feature",
-  "status": "new",
-  "created_at": "2026-04-01T10:00:00Z",
-  "updated_at": "2026-04-01T10:00:00Z",
-  "description": "In place animations. Mixamo has an option to download animations \"in place\". Research the site API to see how this option works and add an \"--inplace\" argument to download in place animations."
-}
