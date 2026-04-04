@@ -276,6 +276,8 @@ bpy.ops.export_scene.gltf(
 # FBX export instead of GLB, but GLB is better for NLA tracks
 #bpy.ops.export_scene.fbx(filepath=export_path,use_selection=True,bake_anim=True,bake_anim_use_all_actions=True)
 
+#bpy.ops.wm.save_as_mainfile(filepath=export_path)
+
 log("Exported:", export_path)
 '''
 
