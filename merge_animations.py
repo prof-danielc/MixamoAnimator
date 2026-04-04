@@ -12,7 +12,7 @@ Requirements:
 
 Usage:
     python merge_animations.py
-    python merge_animations.py --folder "C:/path/to/fbx" --tex "C:/path/to/textures" --master Tpose.fbx --output Out.glb
+    python merge_animations.py --folder "C:/path/to/fbx" --tex "C:/path/to/textures" --master Tpose.fbx --save-as gltf --output Out.glb
 """
 
 import os
@@ -20,6 +20,7 @@ import sys
 import subprocess
 import tempfile
 import argparse
+from pathlib import Path
 
 # ============================================================
 # CONFIG  —  edit these or use the CLI flags below
@@ -27,7 +28,11 @@ import argparse
 DEFAULT_FBX_FOLDER  = r"C:\Users\Daniel\Downloads\MixamoAnimator\downloads"
 DEFAULT_TEX_FOLDER  = r"C:\Users\Daniel\Downloads\MixamoAnimator\downloads\textures"
 DEFAULT_MASTER_FILE = "Tpose.fbx"
-DEFAULT_EXPORT_FILE = "MergedAnimations.glb"
+DEFAULT_EXPORT_FILES = {
+    "gltf": "MergedAnimations.glb",
+    "fbx": "MergedAnimations.fbx",
+    "save_as_mainfile": "MergedAnimations.blend",
+}
 
 # Common Blender install locations (checked in order).
 # Add your own path at the top if Blender lives somewhere else.
@@ -48,6 +53,31 @@ BLENDER_SEARCH_PATHS = [
     "/snap/bin/blender",
 ]
 
+
+def find_latest_blender_install() -> str | None:
+    """Return the newest Blender executable from common install roots."""
+    install_roots = [
+        Path(r"C:\Program Files\Blender Foundation"),
+        Path(r"C:\Program Files"),
+    ]
+    blender_dirs = []
+
+    for root in install_roots:
+        if not root.is_dir():
+            continue
+        for child in root.iterdir():
+            if not child.is_dir() or not child.name.lower().startswith("blender"):
+                continue
+            exe_path = child / "blender.exe"
+            if exe_path.is_file():
+                blender_dirs.append((child.name.lower(), str(exe_path)))
+
+    if not blender_dirs:
+        return None
+
+    blender_dirs.sort(reverse=True)
+    return blender_dirs[0][1]
+
 # ============================================================
 # THE BLENDER SCRIPT (embedded as a string, written to a
 # temporary file and executed by Blender in --background mode)
@@ -67,6 +97,7 @@ fbx_folder  = argv[separator]
 tex_folder  = argv[separator + 1]
 master_file = argv[separator + 2]
 export_file = argv[separator + 3]
+save_as     = argv[separator + 4].lower()
 
 master_path = os.path.join(fbx_folder, master_file)
 export_path = os.path.join(fbx_folder, export_file)
@@ -263,20 +294,27 @@ for mesh in master_meshes:
     mesh.select_set(True)
 bpy.context.view_layer.objects.active = master_armature
 
-bpy.ops.export_scene.gltf(
-    filepath                       = export_path,
-    use_selection                  = True,
-    export_format                  = "GLB",
-    export_animations              = True,
-    export_nla_strips              = True,
-    export_animation_mode          = "NLA_TRACKS",
-    export_optimize_animation_size = False,
-)
-
-# FBX export instead of GLB, but GLB is better for NLA tracks
-#bpy.ops.export_scene.fbx(filepath=export_path,use_selection=True,bake_anim=True,bake_anim_use_all_actions=True)
-
-#bpy.ops.wm.save_as_mainfile(filepath=export_path)
+if save_as == "gltf":
+    bpy.ops.export_scene.gltf(
+        filepath                       = export_path,
+        use_selection                  = True,
+        export_format                  = "GLB",
+        export_animations              = True,
+        export_nla_strips              = True,
+        export_animation_mode          = "NLA_TRACKS",
+        export_optimize_animation_size = False,
+    )
+elif save_as == "fbx":
+    bpy.ops.export_scene.fbx(
+        filepath=export_path,
+        use_selection=True,
+        bake_anim=True,
+        bake_anim_use_all_actions=True,
+    )
+elif save_as == "save_as_mainfile":
+    bpy.ops.wm.save_as_mainfile(filepath=export_path)
+else:
+    raise ValueError(f"Unsupported save mode: {save_as}")
 
 log("Exported:", export_path)
 '''
@@ -292,12 +330,17 @@ def find_blender() -> str:
     if env and os.path.isfile(env):
         return env
 
-    # 2. Try well-known install paths
+    # 2. Prefer the newest Blender installation in standard locations
+    latest_install = find_latest_blender_install()
+    if latest_install:
+        return latest_install
+
+    # 3. Try well-known install paths
     for path in BLENDER_SEARCH_PATHS:
         if os.path.isfile(path):
             return path
 
-    # 3. Try PATH (works on Linux/macOS when installed via package manager)
+    # 4. Try PATH (works on Linux/macOS when installed via package manager)
     for candidate in ("blender", "blender3", "blender4"):
         result = subprocess.run(
             ["where" if sys.platform == "win32" else "which", candidate],
@@ -315,13 +358,20 @@ def find_blender() -> str:
     )
 
 
-def run_merge(fbx_folder: str, tex_folder: str, master_file: str, export_file: str):
+def run_merge(
+    fbx_folder: str,
+    tex_folder: str,
+    master_file: str,
+    export_file: str,
+    save_as: str,
+):
     blender_exe = find_blender()
     print(f"[LAUNCHER] Using Blender : {blender_exe}")
     print(f"[LAUNCHER] FBX folder   : {fbx_folder}")
     print(f"[LAUNCHER] Tex folder   : {tex_folder}")
     print(f"[LAUNCHER] Master file  : {master_file}")
     print(f"[LAUNCHER] Export file  : {export_file}")
+    print(f"[LAUNCHER] Save mode    : {save_as}")
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False, encoding="utf-8"
@@ -339,6 +389,7 @@ def run_merge(fbx_folder: str, tex_folder: str, master_file: str, export_file: s
             tex_folder,
             master_file,
             export_file,
+            save_as,
         ]
 
         print("[LAUNCHER] Running Blender in background mode …\n")
@@ -359,7 +410,7 @@ def run_merge(fbx_folder: str, tex_folder: str, master_file: str, export_file: s
 # ============================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Merge Mixamo FBX animations into a single GLB file."
+        description="Merge Mixamo FBX animations and export them from Blender."
     )
     parser.add_argument(
         "--folder",
@@ -378,14 +429,23 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output",
-        default=DEFAULT_EXPORT_FILE,
-        help="Output GLB filename (default: MergedAnimations.glb)",
+        default=None,
+        help="Output filename (default depends on --save-as)",
+    )
+    parser.add_argument(
+        "--save-as",
+        choices=tuple(DEFAULT_EXPORT_FILES),
+        default="gltf",
+        help="Blender export mode: gltf, fbx, or save_as_mainfile (default: gltf)",
     )
     args = parser.parse_args()
+
+    export_file = args.output or DEFAULT_EXPORT_FILES[args.save_as]
 
     run_merge(
         fbx_folder  = args.folder,
         tex_folder  = args.tex,
         master_file = args.master,
-        export_file = args.output,
+        export_file = export_file,
+        save_as     = args.save_as,
     )

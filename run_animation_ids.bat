@@ -1,0 +1,1 @@
+python main.py --model_path TPose.fbx --headless --no-refresh-catalog --inplace --animations_ids c9c972d1-b96c-11e4-a802-0aaa78deedf9 c9c6cb0d-b96c-11e4-a802-0aaa78deedf9 c9c99ece-b96c-11e4-a802-0aaa78deedf9 c9c640fa-b96c-11e4-a802-0aaa78deedf9 c9ccebcf-b96c-11e4-a802-0aaa78deedf9

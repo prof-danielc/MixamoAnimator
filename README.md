@@ -76,6 +76,27 @@ We've provided several `.bat` files as examples of how to automate the workflow:
     python merge_animations.py
     ```
 
+### Animation Viewer (`view_animations.py`)
+
+Browse the cached catalog with:
+
+-   Search, filtering, and sorting.
+-   Animated GIF previews when available, with PNG fallback.
+-   Disk-cached previews and retry support.
+-   Multi-select export, copy, and download-queue helpers.
+-   Copy-ready CLI arguments for `--animations_ids`.
+-   A details panel for the selected animation, including raw JSON.
+
+```bash
+python view_animations.py
+```
+
+Use a different catalog file if needed:
+
+```bash
+python view_animations.py --catalog other_catalog.json
+```
+
 ### Merging Animations (`merge_animations.py`)
 
 This script uses Blender (in background mode) to take all animations in your `downloads` folder and merge them onto a single master skeleton. It creates a `.glb` file where each animation is a separate NLA track.
